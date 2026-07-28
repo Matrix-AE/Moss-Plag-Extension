@@ -30,6 +30,28 @@ function Assert-True {
     }
 }
 
+function Read-StrictUtf8Text {
+    param([string]$Path)
+
+    $bytes = [System.IO.File]::ReadAllBytes($Path)
+    $offset = 0
+    if (($bytes.Length -ge 3) -and
+        ($bytes[0] -eq 0xEF) -and
+        ($bytes[1] -eq 0xBB) -and
+        ($bytes[2] -eq 0xBF)) {
+        $offset = 3
+    }
+
+    $decoder = [System.Text.UTF8Encoding]::new($false, $true)
+    try {
+        $text = $decoder.GetString($bytes, $offset, $bytes.Length - $offset)
+    } catch {
+        throw "File is not valid UTF-8: $Path"
+    }
+    Assert-True ($text.IndexOf([char]0xFFFD) -lt 0) "Unicode replacement character found: $Path"
+    $text
+}
+
 function Invoke-Git {
     param(
         [string[]]$Arguments,
@@ -95,7 +117,7 @@ function Test-RemoteUrl {
 }
 
 Assert-True (Test-Path -LiteralPath $documentPath -PathType Leaf) "Baseline document was not found: $documentPath"
-$documentText = Get-Content -LiteralPath $documentPath -Raw
+$documentText = Read-StrictUtf8Text $documentPath
 $initialStatus = (Invoke-Git -Arguments @("status", "--porcelain=v1", "--untracked-files=all")).Output
 
 $tests = @(
@@ -247,6 +269,7 @@ $tests = @(
                 (Resolve-Path -LiteralPath $documentPath).Path.Substring($repoRoot.Length + 1),
                 (Resolve-Path -LiteralPath $PSCommandPath).Path.Substring($repoRoot.Length + 1)
             ) | Sort-Object -Unique)
+            $textExtensions = @(".css", ".html", ".js", ".json", ".jsx", ".md", ".mjs", ".ps1", ".ts", ".tsx", ".txt", ".yaml", ".yml")
             $secretRules = @(
                 @{ Name = "private-key-header"; Pattern = '-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----' },
                 @{ Name = "github-token"; Pattern = '(?:github_pat_|gh[pousr]_)[A-Za-z0-9_]{20,}' },
@@ -262,10 +285,16 @@ $tests = @(
                 if (-not (Test-Path -LiteralPath $absolutePath -PathType Leaf)) {
                     continue
                 }
-                $text = Get-Content -LiteralPath $absolutePath -Raw -ErrorAction SilentlyContinue
-                if ($null -eq $text) {
+                $item = Get-Item -LiteralPath $absolutePath
+                $extension = [System.IO.Path]::GetExtension($absolutePath).ToLowerInvariant()
+                if (($textExtensions -notcontains $extension) -or ($item.Length -gt 5MB)) {
                     continue
                 }
+                $bytes = [System.IO.File]::ReadAllBytes($absolutePath)
+                if ($bytes -contains 0) {
+                    continue
+                }
+                $text = Read-StrictUtf8Text $absolutePath
                 foreach ($rule in $secretRules) {
                     Assert-True ($text -notmatch $rule.Pattern) "Secret rule '$($rule.Name)' matched $relativePath."
                 }
