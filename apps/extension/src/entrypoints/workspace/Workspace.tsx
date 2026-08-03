@@ -174,6 +174,32 @@ export function Workspace() {
           </p>
         </section>
 
+        <section className="card" aria-labelledby="intake-heading">
+          <h2 id="intake-heading">Add files</h2>
+          <div
+            className="intake-dropzone"
+            role="region"
+            aria-label="File drop zone"
+            data-local-only="true"
+          >
+            <p>
+              Drop files, folders, or approved archives here. Selections stay local-only until review
+              and consent — nothing uploads from this drop zone.
+            </p>
+            <div className="row">
+              <label>
+                Browse files
+                <input type="file" multiple aria-label="Browse files" />
+              </label>
+              <label>
+                Browse folder
+                {/* @ts-expect-error webkitdirectory is supported in Chromium extension pages */}
+                <input type="file" webkitdirectory="" aria-label="Browse folder" />
+              </label>
+            </div>
+          </div>
+        </section>
+
         <section className="card" aria-labelledby="recoverable">
           <h2 id="recoverable">Recoverable state</h2>
           <p className="status">{note}</p>

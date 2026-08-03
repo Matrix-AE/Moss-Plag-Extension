@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Intake — Prompt 039</title>
+    <link rel="stylesheet" href="../tokens/tokens.css" />
+    <style>
+      body { margin: 16px; font-family: system-ui; background: var(--surface); color: var(--text); }
+      .intake-dropzone { border: 1px dashed var(--border); border-radius: 12px; padding: 16px; }
+      #list { margin-top: 12px; }
+    </style>
+  </head>
+  <body data-theme="light">
+    <h1>Secure intake</h1>
+    <div id="intake-drop" class="intake-dropzone" role="region" aria-label="File drop zone" data-local-only="true">
+      <p>Drop files, folders, or approved archives here. Nothing uploads until review and consent.</p>
+      <input id="intake-picker" type="file" multiple aria-label="Browse files" />
+      <input id="intake-folder" type="file" webkitdirectory aria-label="Browse folder" />
+    </div>
+    <ul id="list" role="list"></ul>
+    <p id="status" role="status">local-only · waiting for selection</p>
+    <script>
+      const list = document.getElementById("list");
+      const status = document.getElementById("status");
+      function render(files) {
+        list.innerHTML = "";
+        for (const file of files) {
+          const li = document.createElement("li");
+          li.textContent = `${file.name} (${file.size} bytes) · local-only`;
+          list.append(li);
+        }
+        status.textContent = files.length
+          ? `${files.length} selected · local-only · not uploaded`
+          : "local-only · waiting for selection";
+      }
+      document.getElementById("intake-picker").addEventListener("change", (e) => {
+        render([...e.target.files]);
+      });
+      document.getElementById("intake-folder").addEventListener("change", (e) => {
+        render([...e.target.files]);
+      });
+    </script>
+  </body>
+</html>
