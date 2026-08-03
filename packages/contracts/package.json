@@ -5,6 +5,7 @@
   "type": "commonjs",
   "main": "index.js",
   "exports": {
-    ".": "./index.js"
+    ".": "./index.js",
+    "./validate": "./validate.js"
   }
 }
