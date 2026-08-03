@@ -14,4 +14,5 @@ module.exports = {
   resultHistory: require("./results/history"),
   submissionPipelineGate: require("./pipeline/submission-gate"),
   commercialGates: require("./commerce/commercial-gates"),
+  providerCapacity: require("./commerce/provider-capacity"),
 };
