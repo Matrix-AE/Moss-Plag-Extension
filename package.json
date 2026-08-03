@@ -29,6 +29,9 @@
     "check:runtime": "node scripts/check-node-version.js",
     "check:deps": "node scripts/check-dependencies.js",
     "check:extension": "node scripts/check-extension-build.js",
+    "api:start": "npm run start --workspace @moss/api",
+    "api:start:live": "npm run start:live --workspace @moss/api",
+    "api:start:mock": "npm run start:mock --workspace @moss/api",
     "release:dry-run": "node scripts/release/dry-run.js",
     "format": "node scripts/check-editorconfig.js",
     "format:check": "node scripts/check-editorconfig.js"

@@ -13,6 +13,13 @@ const TRANSPORT_VERSION = 1;
 const APPROVED = Object.freeze({
   "mock-loopback": { transport: "tcp", allowUnencrypted: true, hosts: ["127.0.0.1", "::1"] },
   "encrypted-allowlisted": { transport: "tls", allowUnencrypted: false, hosts: null },
+  // Local-dev only; gated by ALLOW_PUBLIC_MOSS_TCP=1 and never production (ADR-0005B).
+  "public-raw-tcp": {
+    transport: "tcp",
+    allowUnencrypted: true,
+    hosts: ["moss.stanford.edu"],
+    requiresEnvFlag: "ALLOW_PUBLIC_MOSS_TCP",
+  },
 });
 
 function createTransport({
@@ -25,6 +32,7 @@ function createTransport({
   overallTimeoutMs = 30_000,
   production = false,
   allowlistHosts = [],
+  env = process.env,
   now = () => Date.now(),
 } = {}) {
   const profile = APPROVED[mode];
@@ -32,11 +40,23 @@ function createTransport({
   if (production && mode !== "encrypted-allowlisted") {
     throw Object.assign(new Error("prod requires encrypted"), { code: "unencrypted-forbidden" });
   }
+  if (mode === "public-raw-tcp") {
+    if (production || env.NODE_ENV === "production") {
+      throw Object.assign(new Error("public-raw-tcp forbidden in production"), {
+        code: "unencrypted-forbidden",
+      });
+    }
+    if (env.ALLOW_PUBLIC_MOSS_TCP !== "1") {
+      throw Object.assign(new Error("ALLOW_PUBLIC_MOSS_TCP=1 required"), {
+        code: "public-tcp-flag-required",
+      });
+    }
+  }
   if (mode === "encrypted-allowlisted") {
     if (!allowlistHosts.includes(host)) {
       throw Object.assign(new Error("host"), { code: "unapproved-endpoint" });
     }
-  } else if (!profile.hosts.includes(host)) {
+  } else if (profile.hosts && !profile.hosts.includes(host)) {
     throw Object.assign(new Error("host"), { code: "unapproved-endpoint" });
   }
 

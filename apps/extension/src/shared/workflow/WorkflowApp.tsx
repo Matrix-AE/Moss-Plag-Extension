@@ -22,6 +22,7 @@ import {
   clearDemoMossCredential,
   consumeDemoRun,
   createDemoAccount,
+  deobfuscateMossUserId,
   isEntitled,
   isMossConnected,
   loadDemoAccount,
@@ -35,6 +36,7 @@ import {
   type DemoEntitlement,
   type DemoMossCredential,
 } from "../entitlement-demo";
+import * as apiClient from "../api-client";
 
 type Gate = "loading" | "auth" | "paywall" | "moss-id" | "portal";
 type AuthMode = "signin" | "create";
@@ -150,6 +152,8 @@ export function WorkflowApp() {
     "Languages come from server capabilities. Suggestions still need confirmation.",
   );
   const [sourceItems, setSourceItems] = useState<LocalItem[]>([]);
+  /** Browser File handles kept only in memory for upload — never persisted. */
+  const [sourceFiles, setSourceFiles] = useState<File[]>([]);
   const [baseItems, setBaseItems] = useState<LocalItem[]>([]);
   const [groups, setGroups] = useState<any[]>([]);
   const [settings, setSettings] = useState<DraftSettings>(createInitialSettings);
@@ -173,7 +177,13 @@ export function WorkflowApp() {
   const [reportUrl, setReportUrl] = useState("");
   const [linkNote, setLinkNote] = useState("");
   const [linkForgotten, setLinkForgotten] = useState(false);
+  /** When the local API is down, user may opt into the offline demo path. */
+  const [allowOfflineDemo, setAllowOfflineDemo] = useState(false);
+  const [apiMeta, setApiMeta] = useState<{ submitMode?: string; livePublicTcp?: boolean } | null>(
+    null,
+  );
   const syncedRunRef = useRef("");
+  const pollInFlightRef = useRef(false);
 
   const comparisonMode = "pair" as const;
   const runPhase = run?.phase ?? null;
@@ -312,7 +322,11 @@ export function WorkflowApp() {
     } else if (next?.activeJob) {
       // A closed popup stops the local ticker, so recovery re-applies the deadline instead of
       // resuming a spinner that can never end.
-      const recovered = runLifecycle.recoverRunState(next.activeJob, { now: Date.now() });
+      const recovered = runLifecycle.recoverRunState(next.activeJob, {
+        now: Date.now(),
+        mode: String(next.activeJob.jobId || "").startsWith("job_") ? "live" : "demo",
+        deadlineMs: String(next.activeJob.jobId || "").startsWith("job_") ? 180_000 : undefined,
+      });
       if (recovered.ok && recovered.state) {
         setRun(recovered.state);
         setNote(
@@ -341,9 +355,11 @@ export function WorkflowApp() {
     })();
   }, [refreshSession, refreshState]);
 
-  const stepRun = useCallback(() => {
+  const stepDemoRun = useCallback(() => {
     setRun((current) => {
-      if (!current || runLifecycle.isTerminalPhase(current.phase)) return current;
+      if (!current || current.mode !== "demo" || runLifecycle.isTerminalPhase(current.phase)) {
+        return current;
+      }
       const advanced = runLifecycle.advanceRunState(current, { now: Date.now() });
       if (!advanced.ok) {
         return { ...current, phase: "failure", failureCode: "worker", updatedAt: Date.now() };
@@ -352,20 +368,97 @@ export function WorkflowApp() {
     });
   }, []);
 
-  // Drive the run forward. Every tick re-checks the wall-clock deadline, so the UI cannot sit on
-  // a non-terminal phase indefinitely.
+  const pollLiveRun = useCallback(async () => {
+    if (pollInFlightRef.current) return;
+    const current = run;
+    if (!current || current.mode !== "live" || !current.jobId || !account?.email) return;
+    if (runLifecycle.isTerminalPhase(current.phase)) return;
+
+    const now = Date.now();
+    if (now >= current.deadlineAt) {
+      setRun((prev) => {
+        if (!prev || prev.mode !== "live") return prev;
+        const expired = runLifecycle.advanceRunState(prev, { now, event: "fail", failureCode: "uncertain-query" });
+        // Prefer deadline expire path when still non-terminal.
+        if (now >= prev.deadlineAt) {
+          return {
+            ...prev,
+            phase: "timeout",
+            failureCode: prev.submitted ? "uncertain-query" : "provider",
+            updatedAt: now,
+          };
+        }
+        return expired.ok ? expired.state : prev;
+      });
+      return;
+    }
+
+    pollInFlightRef.current = true;
+    try {
+      const status = await apiClient.getJobStatus({
+        ownerUserId: account.email,
+        jobId: current.jobId,
+      });
+      if (!status.ok) {
+        // Keep waiting; network blips should not invent failure before the deadline.
+        return;
+      }
+      const job = status.data["job"] as
+        | {
+            status?: string;
+            reportUrlRef?: string;
+            failureCode?: string;
+            submitted?: boolean;
+          }
+        | undefined;
+      const nextPhase = apiClient.phaseFromJobStatus(job?.status);
+      if (!nextPhase) return;
+
+      setRun((prev) => {
+        if (!prev || prev.mode !== "live" || prev.jobId !== current.jobId) return prev;
+        if (runLifecycle.isTerminalPhase(prev.phase)) return prev;
+        return {
+          ...prev,
+          phase: nextPhase as RunState["phase"],
+          updatedAt: Date.now(),
+          submitted: Boolean(prev.submitted || job?.submitted || nextPhase === "wait" || nextPhase === "success"),
+          resultRef: job?.reportUrlRef || prev.resultRef,
+          failureCode: job?.failureCode || prev.failureCode,
+        };
+      });
+
+      if (nextPhase === "success" && job?.reportUrlRef) {
+        const revealed = await apiClient.revealJobResult({
+          ownerUserId: account.email,
+          jobId: current.jobId,
+        });
+        if (revealed.ok && typeof revealed.data["reportUrl"] === "string") {
+          setReportUrl(String(revealed.data["reportUrl"]));
+        }
+      }
+    } finally {
+      pollInFlightRef.current = false;
+    }
+  }, [run, account?.email]);
+
+  // Drive the run forward: demo ticks locally; live polls the loopback API. Deadline always wins.
   useEffect(() => {
     if (!run || runLifecycle.isTerminalPhase(run.phase)) return undefined;
-    const tick = window.setTimeout(stepRun, runLifecycle.DEMO_STEP_MS);
-    const deadline = window.setTimeout(
-      stepRun,
-      runLifecycle.remainingMs(run, Date.now()) + 50,
-    );
+    if (run.mode === "live") {
+      const tick = window.setTimeout(() => void pollLiveRun(), 900);
+      const deadline = window.setTimeout(() => void pollLiveRun(), runLifecycle.remainingMs(run, Date.now()) + 50);
+      return () => {
+        window.clearTimeout(tick);
+        window.clearTimeout(deadline);
+      };
+    }
+    const tick = window.setTimeout(stepDemoRun, runLifecycle.DEMO_STEP_MS);
+    const deadline = window.setTimeout(stepDemoRun, runLifecycle.remainingMs(run, Date.now()) + 50);
     return () => {
       window.clearTimeout(tick);
       window.clearTimeout(deadline);
     };
-  }, [run, stepRun]);
+  }, [run, stepDemoRun, pollLiveRun]);
 
   // Persist each phase, publish the result link, and refund a run only when nothing was submitted.
   useEffect(() => {
@@ -385,7 +478,7 @@ export function WorkflowApp() {
       if (!saved.ok) {
         setNote("Run status could not be saved locally. The run still resolves in this window.");
       }
-      if (run.phase === "success" && run.resultRef) {
+      if (run.phase === "success" && run.resultRef && run.mode === "demo") {
         setReportUrl(browser.runtime.getURL(runLifecycle.demoReportPath(run.resultRef)));
       }
       if (runLifecycle.shouldReleaseRunCredit(run)) {
@@ -423,6 +516,7 @@ export function WorkflowApp() {
   const discard = useCallback(async () => {
     await sendShellMessage("state/discard-draft");
     setSourceItems([]);
+    setSourceFiles([]);
     setBaseItems([]);
     setGroups([]);
     setLanguageCode("");
@@ -591,7 +685,21 @@ export function WorkflowApp() {
     }
     accepted = accepted.slice(0, room);
     const nextSources = [...sourceItems, ...accepted].slice(0, OFFER.maxFilesPerRun);
+    const matchedFiles: File[] = [];
+    for (const item of accepted) {
+      const byKey = capped.find((entry) => {
+        const displayName = String(entry.name || "")
+          .replace(/[<>:"|?*\u0000-\u001f]/g, "_")
+          .replace(/\\/g, "/")
+          .split("/")
+          .pop()
+          ?.slice(0, 180);
+        return `${displayName}::${entry.size}` === item.key;
+      });
+      if (byKey) matchedFiles.push(byKey);
+    }
     setSourceItems(nextSources);
+    setSourceFiles((prev) => [...prev, ...matchedFiles].slice(0, OFFER.maxFilesPerRun));
     const nextGroups = rebuildGroups(nextSources);
     const suggestion = language.suggestLanguage(
       nextSources.map((item) => ({ displayName: item.displayName })),
@@ -616,6 +724,7 @@ export function WorkflowApp() {
   const removeSource = (index: number) => {
     const next = sourceItems.filter((_, i) => i !== index);
     setSourceItems(next);
+    setSourceFiles((prev) => prev.filter((_, i) => i !== index));
     rebuildGroups(next);
     resetConsent();
   };
@@ -663,12 +772,12 @@ export function WorkflowApp() {
     setProviderIdError("");
   };
 
-  const tryStartJob = async () => {
+  const tryStartJob = async (options: { forceOfflineDemo?: boolean } = {}) => {
     if (!entitled || runsLeft < 1) {
       setGateMessage("Entitlement required before upload/job creation.");
       return;
     }
-    if (!mossConnected) {
+    if (!mossConnected || !mossCredential) {
       setGateMessage("Connect Moss ID before starting a Pair Check.");
       setGate("moss-id");
       return;
@@ -679,6 +788,10 @@ export function WorkflowApp() {
     }
     if (sourceItems.length !== OFFER.maxFilesPerRun || groups.length !== 2) {
       setGateMessage(`Pair Check needs exactly ${OFFER.maxFilesPerRun} files (two submissions).`);
+      return;
+    }
+    if (sourceFiles.length !== OFFER.maxFilesPerRun) {
+      setGateMessage("Reselect both files in this session before starting — file bytes are not kept after restart.");
       return;
     }
     if (!ownership || !sensitiveLink) {
@@ -702,6 +815,28 @@ export function WorkflowApp() {
       setGateMessage(recorded.error || "Consent recording failed.");
       return;
     }
+
+    const useOfflineDemo = Boolean(options.forceOfflineDemo || allowOfflineDemo);
+    let health: Awaited<ReturnType<typeof apiClient.probeLocalApi>> = { ok: false };
+    if (!useOfflineDemo) {
+      health = await apiClient.probeLocalApi();
+      if (!health.ok) {
+        setGateMessage(
+          "Local API is not running at http://127.0.0.1:8787. Start it with npm run api:start (mock) or npm run api:start:live (real MOSS), then try again — or use offline demo.",
+        );
+        setAllowOfflineDemo(false);
+        return;
+      }
+      setApiMeta({ submitMode: health.submitMode, livePublicTcp: health.livePublicTcp });
+    }
+
+    const mossUserId = deobfuscateMossUserId(mossCredential.localCipher);
+    if (!useOfflineDemo && (!mossUserId || !/^[0-9]{3,}$/.test(mossUserId))) {
+      setGateMessage("Saved Moss User ID could not be unlocked. Reconnect Moss ID, then try again.");
+      setGate("moss-id");
+      return;
+    }
+
     const consumed = await consumeDemoRun();
     if (!consumed.ok) {
       setGateMessage(consumed.error);
@@ -709,18 +844,103 @@ export function WorkflowApp() {
     }
     setEntitlement(consumed.entitlement);
 
-    const jobId = `job-${crypto.randomUUID()}`;
+    const jobId = useOfflineDemo ? `job-${crypto.randomUUID()}` : "";
+    const idempotencyKey = `idem-${crypto.randomUUID()}`;
+
+    if (useOfflineDemo) {
+      const bound = await sendShellMessage("state/bind-job", {
+        jobId,
+        status: "ready",
+        mode: comparisonMode,
+        language: languageCode,
+        submissionIdempotencyKey: idempotencyKey,
+      });
+      if (!bound.ok) {
+        const released = await releaseDemoRun(jobId);
+        if (released.ok) setEntitlement(released.entitlement);
+        setGateMessage(
+          bound.error === "active-job-exists"
+            ? "An earlier run is still unresolved. Close it below, then start again — your run was not used."
+            : "The background worker did not accept the run. Your run was not used; try again.",
+        );
+        await refreshState();
+        return;
+      }
+      syncedRunRef.current = "";
+      setReportUrl("");
+      setLinkNote("");
+      setLinkForgotten(false);
+      setRun(
+        runLifecycle.createRunState({
+          now: Date.now(),
+          jobId,
+          language: languageCode,
+          comparison: comparisonMode,
+          mode: "demo",
+        }),
+      );
+      setGateMessage(
+        `Offline demo started. ${consumed.entitlement.remaining} of ${consumed.entitlement.total} runs remaining. No files leave this device.`,
+      );
+      await refreshState();
+      return;
+    }
+
+    // Live / mock API path
+    setRun(
+      runLifecycle.createRunState({
+        now: Date.now(),
+        jobId: "pending",
+        language: languageCode,
+        comparison: comparisonMode,
+        mode: "live",
+        deadlineMs: 180_000,
+      }),
+    );
+    setReportUrl("");
+    setLinkNote("");
+    setLinkForgotten(false);
+    syncedRunRef.current = "";
+
+    const ownerUserId = account?.email || "local-owner";
+    const created = await apiClient.createPairJob({
+      ownerUserId,
+      language: languageCode,
+      idempotencyKey,
+      settings: {
+        commonMatchThreshold: settings.commonMatchThreshold,
+        resultCount: settings.resultCount,
+        reportLabel: settings.reportLabel || "pair-check",
+      },
+    });
+    if (!created.ok) {
+      const released = await releaseDemoRun(`failed-create-${Date.now()}`);
+      if (released.ok) setEntitlement(released.entitlement);
+      setRun(null);
+      setGateMessage("Could not create a job on the local API. Your run was not used.");
+      return;
+    }
+    const apiJob = created.data["job"] as { jobId?: string } | undefined;
+    const remoteJobId = String(apiJob?.jobId || "");
+    if (!remoteJobId) {
+      const released = await releaseDemoRun(`failed-create-${Date.now()}`);
+      if (released.ok) setEntitlement(released.entitlement);
+      setRun(null);
+      setGateMessage("Local API returned no job id. Your run was not used.");
+      return;
+    }
+
     const bound = await sendShellMessage("state/bind-job", {
-      jobId,
-      status: "ready",
+      jobId: remoteJobId,
+      status: "uploading",
       mode: comparisonMode,
       language: languageCode,
-      submissionIdempotencyKey: `idem-${crypto.randomUUID()}`,
+      submissionIdempotencyKey: idempotencyKey,
     });
     if (!bound.ok) {
-      // Nothing was submitted, so the consumed run goes straight back.
-      const released = await releaseDemoRun(jobId);
+      const released = await releaseDemoRun(remoteJobId);
       if (released.ok) setEntitlement(released.entitlement);
+      setRun(null);
       setGateMessage(
         bound.error === "active-job-exists"
           ? "An earlier run is still unresolved. Close it below, then start again — your run was not used."
@@ -730,20 +950,81 @@ export function WorkflowApp() {
       return;
     }
 
-    syncedRunRef.current = "";
-    setReportUrl("");
-    setLinkNote("");
-    setLinkForgotten(false);
-    setRun(
-      runLifecycle.createRunState({
-        now: Date.now(),
-        jobId,
-        language: languageCode,
-        comparison: comparisonMode,
-      }),
+    setRun((prev) =>
+      prev
+        ? { ...prev, jobId: remoteJobId, phase: "upload", updatedAt: Date.now() }
+        : prev,
+    );
+
+    const cred = await apiClient.attachMossCredential({
+      ownerUserId,
+      jobId: remoteJobId,
+      mossUserId: mossUserId!,
+    });
+    if (!cred.ok) {
+      const released = await releaseDemoRun(remoteJobId);
+      if (released.ok) setEntitlement(released.entitlement);
+      setRun({
+        ...runLifecycle.createRunState({
+          now: Date.now(),
+          jobId: remoteJobId,
+          language: languageCode,
+          comparison: comparisonMode,
+          mode: "live",
+        }),
+        phase: "failure",
+        failureCode: "credential",
+      });
+      setGateMessage("Moss User ID handoff to the local API failed. Your run was released.");
+      return;
+    }
+
+    const encoded = await Promise.all(
+      sourceFiles.map(async (file, index) => ({
+        displayName: sourceItems[index]?.displayName || file.name,
+        bytesBase64: await apiClient.fileToBase64(file),
+      })),
+    );
+    const uploaded = await apiClient.uploadPairFiles({
+      ownerUserId,
+      jobId: remoteJobId,
+      files: encoded,
+    });
+    if (!uploaded.ok) {
+      const released = await releaseDemoRun(remoteJobId);
+      if (released.ok) setEntitlement(released.entitlement);
+      setRun((prev) =>
+        prev
+          ? { ...prev, phase: "failure", failureCode: "upload", updatedAt: Date.now() }
+          : prev,
+      );
+      setGateMessage("Upload to the local API failed before MOSS submission. Your run was released.");
+      return;
+    }
+
+    setRun((prev) => (prev ? { ...prev, phase: "queue", updatedAt: Date.now() } : prev));
+    const finalized = await apiClient.finalizeJob({ ownerUserId, jobId: remoteJobId });
+    if (!finalized.ok) {
+      const released = await releaseDemoRun(remoteJobId);
+      if (released.ok) setEntitlement(released.entitlement);
+      setRun((prev) =>
+        prev
+          ? { ...prev, phase: "failure", failureCode: "worker", updatedAt: Date.now() }
+          : prev,
+      );
+      setGateMessage("Finalize failed before MOSS submission. Your run was released.");
+      return;
+    }
+
+    setRun((prev) =>
+      prev
+        ? { ...prev, phase: "submit", submitted: true, updatedAt: Date.now() }
+        : prev,
     );
     setGateMessage(
-      `Run started. ${consumed.entitlement.remaining} of ${consumed.entitlement.total} runs remaining. Phases are reported as they happen — no percentage is invented.`,
+      health.livePublicTcp
+        ? `Live MOSS submission started with your userid (quota consumed). ${consumed.entitlement.remaining} of ${consumed.entitlement.total} runs remaining.`
+        : `Local mock MOSS submission started. ${consumed.entitlement.remaining} of ${consumed.entitlement.total} runs remaining.`,
     );
     await refreshState();
   };
@@ -790,9 +1071,13 @@ export function WorkflowApp() {
 
   const forgetReportLink = () => {
     setLinkForgotten(true);
+    setReportUrl("");
     setLinkNote(
-      "Link forgotten in this popup. This does not revoke browser history or clipboard copies.",
+      "Link forgotten in this popup. This does not revoke browser history, clipboard copies, or the provider report.",
     );
+    if (run?.mode === "live" && run.jobId && account?.email) {
+      void apiClient.forgetJobResult({ ownerUserId: account.email, jobId: run.jobId });
+    }
   };
 
   const openSettings = () => {
@@ -1020,11 +1305,24 @@ export function WorkflowApp() {
 
           {gate === "portal" ? (
             <div className="portal-cta">
+              <p className="status status--notice">
+                Starting a check uploads your two files to the local API and then to MOSS. A live run
+                uses your Moss User ID and quota. The result link is sensitive — treat it like a
+                password. Reports never auto-open.
+              </p>
+              {apiMeta?.livePublicTcp ? (
+                <p className="status status--danger">
+                  Local API is in live public MOSS mode (cleartext TCP to Stanford).
+                </p>
+              ) : null}
               <button
                 type="button"
                 className="cta"
                 disabled={progressPhase || runsLeft < 1 || !mossConnected}
-                onClick={() => void tryStartJob()}
+                onClick={() => {
+                  setAllowOfflineDemo(false);
+                  void tryStartJob();
+                }}
               >
                 {progressPhase
                   ? "Working…"
@@ -1034,6 +1332,19 @@ export function WorkflowApp() {
                       ? "No runs left"
                       : "Start Pair Check"}
               </button>
+              {gateMessage.includes("Local API is not running") ? (
+                <button
+                  type="button"
+                  className="secondary"
+                  disabled={progressPhase || runsLeft < 1}
+                  onClick={() => {
+                    setAllowOfflineDemo(true);
+                    void tryStartJob({ forceOfflineDemo: true });
+                  }}
+                >
+                  Run offline demo instead
+                </button>
+              ) : null}
               <p className="status status-inline">
                 <span className="status-dot" aria-hidden="true" />
                 {gateMessage}

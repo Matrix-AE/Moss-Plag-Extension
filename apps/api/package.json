@@ -30,10 +30,18 @@
     "./legal/privacy": "./legal/privacy.js",
     "./legal/consent-copy": "./legal/consent-copy.js",
     "./commerce/entitlements": "./commerce/entitlements.js",
-    "./commerce/checkout": "./commerce/checkout.js"
+    "./commerce/checkout": "./commerce/checkout.js",
+    "./live/pair-service": "./live/pair-service.js",
+    "./server": "./server.js"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "start:live": "node start-live.js",
+    "start:mock": "node server.js"
   },
   "dependencies": {
     "@moss/domain": "0.0.0",
-    "@moss/contracts": "0.0.0"
+    "@moss/contracts": "0.0.0",
+    "@moss/provider-adapter": "0.0.0"
   }
 }

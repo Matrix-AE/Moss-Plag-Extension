@@ -12,7 +12,8 @@
     "./protocol-names": "./protocol-names.js",
     "./socket-transport": "./socket-transport.js",
     "./job-commands": "./job-commands.js",
-    "./failures": "./failures.js"
+    "./failures": "./failures.js",
+    "./live-submit": "./live-submit.js"
   },
   "dependencies": {
     "@moss/domain": "0.0.0",

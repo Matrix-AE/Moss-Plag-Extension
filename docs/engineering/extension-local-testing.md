@@ -11,6 +11,31 @@ npm run check:extension
 
 Unpacked output: `apps/extension/.output/chrome-mv3`
 
+## Local API (required for real / mock MOSS results)
+
+The popup Pair Check talks to a **loopback API** on `http://127.0.0.1:8787` (not the hosted
+`api.mossworkflow.dev` origin during local testing).
+
+### Mock MOSS (default — safe for CI / daily dev)
+
+```bash
+npm run api:start
+```
+
+Uses an in-process mock MOSS server on loopback. No Stanford traffic. No quota consumed.
+
+### Live public MOSS (explicit opt-in — consumes real quota)
+
+```bash
+npm run api:start:live
+```
+
+Sets `ALLOW_PUBLIC_MOSS_TCP=1` and submits over cleartext TCP to `moss.stanford.edu:7690` with the
+BYO numeric userid from the extension. **Forbidden in production** (ADR-0005B). Never enable this
+flag in CI.
+
+Health check: `GET http://127.0.0.1:8787/health` → `submitMode` is `mock-loopback` or `public-raw-tcp`.
+
 ## Deterministic demo login
 
 A fixed local demo account is seeded into `chrome.storage.local` on popup load:
@@ -36,16 +61,28 @@ Use **Sign in** with those credentials. Create-account also works for other loca
 | Surface | Verify |
 | --- | --- |
 | Popup (~320×580, scroll inside) | Sign in with demo credentials → paywall ($15 / 15 runs / max 2 files, no upload yet) → **Connect Moss User ID** (enter registration email, see exact `registeruser` / `mail …` body, ack, paste numeric ID e.g. `936770554`) → Pair Check portal (language, two file pickers, Advanced options, Account / masked provider ID, preflight, consents, Start Pair Check decrements remaining runs, SETTINGS footer) |
-| Run to result | After **Start Pair Check** the run card walks the named phases (Check files → Upload → Queue → Submit → Wait for report) and finishes within a few seconds with a **Local demo result** link to `report.html`. Nothing auto-opens; use **Copy link** or click the link yourself. |
-| Stuck-run safety | A run that stops making progress closes itself at its deadline (90s) with an error, a reference, and recovery actions. Closing and reopening the popup re-applies the same deadline instead of resuming a spinner. |
-| Local demo report | `report.html` states plainly that no files were uploaded and no provider query ran, so it is not a MOSS similarity report and carries no similarity measurements. |
-| Moss ID step | Extension shows instructions only — it does **not** email Stanford. Portal stays locked until a numeric ID is saved (masked + local vault cipher; never sync). |
+| Live / mock result path | Start the local API first. After **Start Pair Check** the popup creates a job, uploads both files, hands off the Moss userid to the server vault, finalizes, and polls status. On success it shows an **https** result link (mock: `https://mock.local/...`, live: Stanford). Nothing auto-opens; use **Copy link** or click the link yourself. |
+| Offline demo fallback | If the local API is down, Start explains how to launch it. **Run offline demo instead** still produces a local `report.html` link labelled as a demo (no MOSS query). |
+| Stuck-run safety | A run that stops making progress closes itself at its deadline with an error, a reference, and recovery actions. Closing and reopening the popup re-applies the same deadline instead of resuming a spinner. |
+| Moss ID step | Extension shows instructions only — it does **not** email Stanford. Portal stays locked until a numeric ID is saved (masked + local vault cipher; never sync). Plaintext userid is sent only over loopback HTTP into the API vault at start. |
 | Settings (embedded options) | Origins and permissions copy (`storage`, `alarms` only) |
 | Themes | Popup forces dark brand tokens; settings still follow OS preference |
+
+## Manual live smoke (never in CI)
+
+1. `npm run api:start:live`
+2. Rebuild / reload the unpacked extension.
+3. Sign in → Unlock → Connect a **real** Moss User ID.
+4. Pick two small source files → consent → **Start Pair Check**.
+5. Wait for a real `https://…moss.stanford.edu…` report URL.
+6. Confirm the link opens only on user click; forget/copy behave honestly.
+
+Expect cleartext TCP and real quota use. Stop the live API when finished.
 
 ## Dev loop (optional)
 
 ```bash
+npm run api:start
 npm run dev --workspace @moss/extension
 ```
 
@@ -58,4 +95,5 @@ npm test
 npm run check:extension
 ```
 
-Provider/protocol work (Prompts 051+) is covered by Node tests with the mock loopback server — not by live Stanford MOSS traffic.
+Provider/protocol work uses the mock loopback server only. Live public MOSS is manual/opt-in and
+must never run in CI.

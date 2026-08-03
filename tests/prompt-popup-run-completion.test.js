@@ -157,7 +157,8 @@ test("P-RUN-T07 remaining runs are released only when nothing was submitted", ()
 
 test("P-RUN-T08 popup drives the lifecycle to a result link and releases credit on failure", () => {
   assert.match(workflow, /@moss\/ui\/run-lifecycle/);
-  assert.match(workflow, /advanceRunState/);
+  assert.match(workflow, /api-client/);
+  assert.match(workflow, /probeLocalApi|createPairJob|revealJobResult/);
   assert.match(workflow, /recoverRunState/);
   assert.match(workflow, /shouldReleaseRunCredit/);
   assert.match(workflow, /releaseDemoRun/);
@@ -169,6 +170,7 @@ test("P-RUN-T08 popup drives the lifecycle to a result link and releases credit 
   assert.match(workflow, /noreferrer/);
   assert.doesNotMatch(workflow, /window\.open|tabs\.create/);
   assert.match(entitlementSrc, /export async function releaseDemoRun/);
+  assert.match(entitlementSrc, /deobfuscateMossUserId/);
 });
 
 test("P-RUN-T09 a labelled local demo report page backs the produced link", () => {
@@ -179,5 +181,6 @@ test("P-RUN-T09 a labelled local demo report page backs the produced link", () =
   assert.match(report, /no similarity measurements/i);
   assert.doesNotMatch(report, /\d+\s*%/, "a simulated report must not invent similarity numbers");
   assert.match(shellDoc, /run-lifecycle|deadline/i);
-  assert.match(localDoc, /report\.html|local demo report/i);
+  assert.match(localDoc, /127\.0\.0\.1:8787|api:start/i);
+  assert.match(localDoc, /ALLOW_PUBLIC_MOSS_TCP|api:start:live/i);
 });

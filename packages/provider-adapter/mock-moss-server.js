@@ -3,6 +3,10 @@
 /**
  * Deterministic mock MOSS protocol TCP server (Prompt 055).
  * Loopback/ephemeral only — never contacts external MOSS.
+ *
+ * Scripts:
+ * - valid / reject / reset / malformed-url / ambiguous / backpressure (legacy line-oriented)
+ * - protocol — full pair-submit protocol including binary file bodies
  */
 
 const net = require("node:net");
@@ -32,23 +36,39 @@ function createMockMossServer({
           return;
         }
         let buf = Buffer.alloc(0);
+        let expectBytes = 0;
+
         socket.on("data", (chunk) => {
           buf = Buffer.concat([buf, chunk]);
-          transcripts.push({ dir: "in", remote, bytes: chunk.toString("utf8") });
+          transcripts.push({ dir: "in", remote, bytes: chunk.length });
           void handleBuffer();
         });
 
         async function handleBuffer() {
-          // Process complete lines
           while (true) {
+            if (expectBytes > 0) {
+              if (buf.length < expectBytes) return;
+              buf = buf.subarray(expectBytes);
+              expectBytes = 0;
+              continue;
+            }
             const idx = buf.indexOf(0x0a);
-            if (idx < 0) break;
+            if (idx < 0) return;
             const line = buf.subarray(0, idx).toString("utf8").replace(/\r$/, "");
             buf = buf.subarray(idx + 1);
+
+            const fileMatch = /^file\s+\d+\s+\S+\s+(\d+)\s+/i.exec(line);
+            if (fileMatch && (script === "protocol" || script === "valid")) {
+              expectBytes = Number(fileMatch[1]) || 0;
+              // No ACK for file headers in classic MOSS; consume body next.
+              continue;
+            }
+
             const response = await scriptedResponse(line, script);
+            if (response == null) continue;
             await sleep(delayMs);
             await writeChunked(socket, response, chunkSize);
-            transcripts.push({ dir: "out", remote, bytes: response });
+            transcripts.push({ dir: "out", remote, bytes: response.length });
           }
         }
 
@@ -97,8 +117,19 @@ async function scriptedResponse(line, script) {
   if (script === "backpressure") {
     return `${"X".repeat(1024)}\n`;
   }
-  // valid session
+
+  // Full protocol used by live-submit mock-loopback mode.
+  if (script === "protocol") {
+    if (/^language\s+/i.test(line)) return "yes\n";
+    if (/^query\s+/i.test(line)) return "https://mock.local/results/synthetic-1\n";
+    if (/^end$/i.test(line)) return null;
+    // moss / directory / X / maxmatches / show / file handled silently
+    return null;
+  }
+
+  // Legacy valid session
   if (/^moss\s+/i.test(line) || line.startsWith("userid")) return "OK\n";
+  if (/^language\s+/i.test(line)) return "yes\n";
   if (line.startsWith("query") || line === "query") return "https://mock.local/results/synthetic-1\n";
   return "OK\n";
 }
