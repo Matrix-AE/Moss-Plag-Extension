@@ -26,7 +26,8 @@
     "./base-code": "./base-code/index.js",
     "./preflight": "./preflight/index.js",
     "./settings": "./settings/index.js",
-    "./review": "./review/index.js"
+    "./review": "./review/index.js",
+    "./result-experience": "./result-experience/index.js"
   },
   "scripts": {
     "emit:tokens": "node ../../scripts/emit-ui-tokens.js",
