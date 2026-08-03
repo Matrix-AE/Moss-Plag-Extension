@@ -17,11 +17,17 @@
     "test": "node --test \"tests/**/*.test.js\"",
     "test:domain": "node --test tests/prompt-011-domain-model.test.js",
     "pretypecheck": "node scripts/check-node-version.js",
-    "typecheck": "node scripts/check-workspaces.js",
+    "typecheck": "tsc -b --pretty false",
     "prelint": "node scripts/check-node-version.js",
     "lint": "node scripts/check-workspaces.js && node scripts/check-boundaries.js",
     "prebuild": "node scripts/check-node-version.js",
-    "build": "node scripts/check-workspaces.js",
-    "check:runtime": "node scripts/check-node-version.js"
+    "build": "tsc -b --pretty false",
+    "check:runtime": "node scripts/check-node-version.js",
+    "format": "node scripts/check-editorconfig.js",
+    "format:check": "node scripts/check-editorconfig.js"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.10",
+    "typescript": "^5.8.3"
   }
 }

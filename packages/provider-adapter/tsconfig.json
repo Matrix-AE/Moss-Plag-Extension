@@ -1,0 +1,15 @@
+{
+  "extends": "../../tsconfig.node.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "outDir": "dist",
+    "allowJs": true,
+    "checkJs": false
+  },
+  "include": ["./**/*.ts", "./**/*.js"],
+  "exclude": ["dist"],
+  "references": [
+    { "path": "../domain" },
+    { "path": "../contracts" }
+  ]
+}
