@@ -7,4 +7,5 @@ module.exports = {
   transferManager: require("./uploads/transfer-manager"),
   sandboxedWorkers: require("./workers/sandboxed"),
   sourceRetention: require("./retention/source"),
+  credentialVault: require("./credentials/vault"),
 };
