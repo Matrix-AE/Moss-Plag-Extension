@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'none'"
+    >
+    <meta name="color-scheme" content="dark light">
+    <title>Code similarity workflow — research prototype</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <a class="skip-link" href="#prototype-main">Skip to prototype</a>
+
+    <header class="topbar">
+      <a class="brand" href="?scenario=empty" aria-label="Research prototype home">
+        <span class="brand-mark" aria-hidden="true">M</span>
+        <span>
+          <strong>Matchlight</strong>
+          <small>Research prototype</small>
+        </span>
+      </a>
+      <div class="research-badge" role="note">
+        <span aria-hidden="true"></span>
+        Synthetic data only · nothing is uploaded
+      </div>
+    </header>
+
+    <section class="facilitator" id="facilitator-panel" aria-labelledby="facilitator-title" hidden>
+      <div>
+        <p class="eyebrow" id="facilitator-title">Facilitator controls</p>
+        <p>Switch a required Prompt 003 research scenario. Participant actions are not stored.</p>
+      </div>
+      <label>
+        Scenario
+        <select id="scenario-select" aria-describedby="scenario-help">
+          <option value="empty">Empty start</option>
+          <option value="two-files">Two files</option>
+          <option value="twenty-files">Twenty files</option>
+          <option value="two-projects">Two multi-file projects</option>
+          <option value="invalid-input">Unsupported input</option>
+          <option value="mixed-language">Mixed languages</option>
+          <option value="offline">Offline submission</option>
+          <option value="timeout">Provider timeout</option>
+          <option value="consent">Consent review</option>
+          <option value="pricing">$15 concept</option>
+          <option value="result">Synthetic result</option>
+        </select>
+        <span id="scenario-help">Reloads the prototype with synthetic metadata.</span>
+      </label>
+    </section>
+
+    <main id="prototype-main" tabindex="-1">
+      <div id="prototype-root"></div>
+    </main>
+
+    <div class="sr-only" id="announcer" aria-live="polite" aria-atomic="true"></div>
+
+    <footer>
+      <p>
+        Research artifact for information-architecture testing. It does not connect to MOSS,
+        another provider, payments, file storage, or analytics.
+      </p>
+    </footer>
+
+    <script src="prototype-model.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>
