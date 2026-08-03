@@ -9,4 +9,5 @@ module.exports = {
   sourceRetention: require("./retention/source"),
   credentialVault: require("./credentials/vault"),
   securityBoundaries: require("./security/boundaries"),
+  durableStatus: require("./jobs/durable-status"),
 };

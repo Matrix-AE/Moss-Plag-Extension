@@ -16,7 +16,8 @@
     "./workers/sandboxed": "./workers/sandboxed.js",
     "./retention/source": "./retention/source.js",
     "./credentials/vault": "./credentials/vault.js",
-    "./security/boundaries": "./security/boundaries.js"
+    "./security/boundaries": "./security/boundaries.js",
+    "./jobs/durable-status": "./jobs/durable-status.js"
   },
   "dependencies": {
     "@moss/domain": "0.0.0",
