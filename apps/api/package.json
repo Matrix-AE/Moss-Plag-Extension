@@ -18,7 +18,8 @@
     "./credentials/vault": "./credentials/vault.js",
     "./security/boundaries": "./security/boundaries.js",
     "./jobs/durable-status": "./jobs/durable-status.js",
-    "./results/metadata": "./results/metadata.js"
+    "./results/metadata": "./results/metadata.js",
+    "./results/history": "./results/history.js"
   },
   "dependencies": {
     "@moss/domain": "0.0.0",
