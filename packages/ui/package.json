@@ -10,7 +10,9 @@
     "./tokens.css": "./tokens/tokens.css",
     "./typography": "./typography/index.js",
     "./typography.css": "./typography/typography.css",
-    "./icons": "./icons/index.js"
+    "./icons": "./icons/index.js",
+    "./interaction": "./interaction/index.js",
+    "./interaction.css": "./interaction/interaction.css"
   },
   "scripts": {
     "emit:tokens": "node ../../scripts/emit-ui-tokens.js",

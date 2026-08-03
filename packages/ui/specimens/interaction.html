@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Interaction specimens — Prompt 029</title>
+    <link rel="stylesheet" href="../tokens/tokens.css" />
+    <link rel="stylesheet" href="../interaction/interaction.css" />
+    <style>
+      body { font-family: system-ui, sans-serif; margin: 16px; background: var(--surface); color: var(--text); }
+      .grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); }
+      .card { border: 1px solid var(--border); border-radius: 10px; padding: 12px; background: var(--surface-muted); }
+      button { margin: 4px; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--accent); color: var(--accent-text); transition: background var(--motion-base) var(--ease-standard); }
+      .skeleton { height: 12px; border-radius: var(--radius-card); background: var(--surface-muted); margin-top: 8px; }
+      [aria-busy="true"]::after { content: " Loading…"; }
+    </style>
+  </head>
+  <body>
+    <h1>Interaction primitives</h1>
+    <label>Theme <select id="theme"><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select></label>
+    <p id="resolved" role="status"></p>
+    <div class="grid">
+      <div class="card"><strong>Rest</strong><br/><button type="button" class="focus-ring">Primary</button></div>
+      <div class="card"><strong>Disabled</strong><br/><button type="button" class="is-disabled" disabled>Disabled</button></div>
+      <div class="card"><strong>Loading</strong><br/><button type="button" class="is-loading focus-ring" aria-busy="true">Saving</button></div>
+      <div class="card"><strong>Skeleton</strong><div class="skeleton"></div></div>
+    </div>
+    <script>
+      const sel = document.getElementById("theme");
+      function apply() {
+        const v = sel.value;
+        if (v === "system") document.documentElement.removeAttribute("data-theme");
+        else document.documentElement.setAttribute("data-theme", v);
+        const dark = matchMedia("(prefers-color-scheme: dark)").matches;
+        const resolved = v === "system" ? (dark ? "dark" : "light") : v;
+        document.getElementById("resolved").textContent = `preference=${v}; resolved=${resolved}`;
+      }
+      sel.addEventListener("change", apply);
+      apply();
+    </script>
+  </body>
+</html>

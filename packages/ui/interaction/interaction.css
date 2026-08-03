@@ -1,0 +1,22 @@
+/* @moss/ui interaction tokens v1 */
+:root {
+  --motion-fast: 120ms;
+  --motion-base: 180ms;
+  --motion-deliberate: 240ms;
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --ease-enter: cubic-bezier(0, 0, 0.2, 1);
+  --ease-exit: cubic-bezier(0.4, 0, 1, 1);
+  --state-disabled-opacity: 0.45;
+  --focus-ring-offset: 2px;
+}
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion-fast: 0ms;
+    --motion-base: 0ms;
+    --motion-deliberate: 0ms;
+  }
+  .skeleton { animation: none !important; }
+}
+.is-disabled { opacity: var(--state-disabled-opacity); pointer-events: none; }
+.is-loading { cursor: progress; }
+.focus-ring:focus-visible { outline: var(--border-focus) solid var(--focus); outline-offset: var(--focus-ring-offset); }
