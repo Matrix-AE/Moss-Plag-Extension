@@ -19,17 +19,16 @@ export default defineConfig({
     version: "0.0.0",
     minimum_chrome_version: "120",
     // Every permission maps to a shipped feature; see docs/engineering/extension-shell.md.
-    // sidePanel is also auto-declared by the WXT sidepanel entrypoint; keep it documented here.
-    permissions: ["storage", "alarms", "sidePanel"],
+    permissions: ["storage", "alarms"],
     optional_permissions: [],
     host_permissions: [API_ORIGIN, UPLOAD_ORIGIN],
     action: {
       default_title: "Code Similarity Workflow",
-      // No default_popup — toolbar click opens the Side Panel via setPanelBehavior.
+      default_popup: "popup.html",
     },
     options_ui: {
       page: "settings.html",
-      // Embedded options page; account controls also live in the Side Panel.
+      // Embedded options page; account controls also live in the popup.
       open_in_tab: false,
     },
     content_security_policy: {

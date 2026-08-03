@@ -12,7 +12,7 @@ test("P064-T01 module validation", () => assert.equal(security.validateSecurityB
 
 test("P064-T02 extension permission and CSP review", () => {
   const review = security.reviewExtensionManifest({
-    permissions: ["storage", "alarms", "sidePanel"],
+    permissions: ["storage", "alarms"],
     optional_permissions: [],
     host_permissions: [
       "https://api.mossworkflow.dev/",

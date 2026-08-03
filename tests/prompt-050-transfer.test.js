@@ -59,5 +59,5 @@ test("P050-T03 docs and package export", () => {
     path.join(root, "apps/extension/src/shared/workflow/WorkflowApp.tsx"),
     "utf8",
   );
-  assert.match(workspace, /transfer|upload progress|Start job/i);
+  assert.match(workspace, /upload|Start Pair Check|entitlement/i);
 });

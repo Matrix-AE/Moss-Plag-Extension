@@ -130,9 +130,9 @@ test("P025-T05 facilitator prototype and product wiring exist", () => {
     path.join(root, "apps/extension/src/shared/workflow/WorkflowApp.tsx"),
     "utf8",
   );
-  assert.match(workspace, /Paywall/);
-  assert.match(workspace, /aria-label="Workspace steps"/);
-  assert.match(workspace, /Review → Paywall/);
+  assert.match(workspace, /paywall/i);
+  assert.match(workspace, /shell--popup|popup-header/);
+  assert.match(workspace, /Files have not been uploaded yet/);
 });
 
 test("P025-T06 primary action stays visible and destructive actions stay labeled in copy", () => {

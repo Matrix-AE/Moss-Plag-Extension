@@ -1,5 +1,5 @@
 import { WorkflowApp } from "../../shared/workflow/WorkflowApp";
 
-export function Sidepanel() {
+export function Popup() {
   return <WorkflowApp />;
 }

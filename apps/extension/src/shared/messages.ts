@@ -71,7 +71,7 @@ export function createExtensionRouter(
         await options.openWorkspace();
         return;
       }
-      // Default: Side Panel is opened by toolbar action — do not create workspace tabs.
+      // Default: toolbar opens default_popup — do not create workspace tabs.
     },
   });
 }

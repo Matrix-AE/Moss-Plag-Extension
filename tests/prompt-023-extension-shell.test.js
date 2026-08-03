@@ -77,19 +77,18 @@ function codes(result) {
   return result.violations.map((violation) => violation.code);
 }
 
-test("P023-T01 build produces an MV3 manifest with Side Panel as the product surface", () => {
+test("P023-T01 build produces an MV3 manifest with popup as the product surface", () => {
   ensureBuild();
   const manifest = JSON.parse(fs.readFileSync(path.join(outDir, "manifest.json"), "utf8"));
   assert.equal(manifest.manifest_version, 3);
   assert.equal(manifest.background.service_worker, "background.js");
-  assert.equal(manifest.action?.default_popup, undefined);
-  assert.ok(manifest.side_panel?.default_path === "sidepanel.html" || fs.existsSync(path.join(outDir, "sidepanel.html")));
+  assert.equal(manifest.action?.default_popup, "popup.html");
   assert.equal(manifest.options_ui.page, "settings.html");
   assert.equal(manifest.options_ui.open_in_tab, false);
-  for (const page of ["sidepanel.html", "settings.html", "background.js"]) {
+  for (const page of ["popup.html", "settings.html", "background.js"]) {
     assert.ok(fs.existsSync(path.join(outDir, page)), `${page} missing`);
   }
-  assert.ok(manifest.permissions.includes("sidePanel"));
+  assert.ok(!(manifest.permissions || []).includes("sidePanel"));
   assert.deepEqual(manifest.host_permissions, ALLOWED_HOSTS);
 });
 
@@ -113,7 +112,7 @@ test("P023-T03 every permission is documented and every documented permission is
 
   const missing = copyBuild();
   mutateManifest(missing, (manifest) => {
-    manifest.permissions = ["storage", "alarms"];
+    manifest.permissions = ["storage"];
   });
   assert.ok(codes(checkExtensionBuild({ outDir: missing })).includes("unused-documented-permission"));
 
@@ -194,7 +193,7 @@ test("P023-T06 icons are valid PNGs and reproducible from the generator", () => 
 
 test("P023-T07 shipped HTML has no inline script or handlers", () => {
   ensureBuild();
-  for (const page of ["sidepanel.html", "settings.html"]) {
+  for (const page of ["popup.html", "settings.html"]) {
     const html = fs.readFileSync(path.join(outDir, page), "utf8");
     for (const tag of html.match(/<script[^>]*>[\s\S]*?<\/script>/g) || []) {
       assert.match(tag, /\ssrc="/, `${page} has an inline script`);
@@ -203,7 +202,7 @@ test("P023-T07 shipped HTML has no inline script or handlers", () => {
   }
 
   const dir = copyBuild();
-  fs.writeFileSync(path.join(dir, "sidepanel.html"), "<html><body><script>alert(1)</script></body></html>");
+  fs.writeFileSync(path.join(dir, "popup.html"), "<html><body><script>alert(1)</script></body></html>");
   assert.ok(codes(checkExtensionBuild({ outDir: dir })).includes("inline-script"));
   fs.rmSync(dir, { recursive: true, force: true });
 });
@@ -214,7 +213,7 @@ test("P023-T08 zip packaging produces a store-ready archive", () => {
   assert.ok(buffer.length > 1024, "archive is suspiciously small");
   assert.equal(buffer.subarray(0, 2).toString("ascii"), "PK");
   const names = buffer.toString("latin1");
-  for (const entry of ["manifest.json", "sidepanel.html", "settings.html", "background.js"]) {
+  for (const entry of ["manifest.json", "popup.html", "settings.html", "background.js"]) {
     assert.ok(names.includes(entry), `archive is missing ${entry}`);
   }
   assert.ok(/icon[/\\]128\.png/.test(names), "archive is missing icons");
@@ -266,18 +265,17 @@ test("P023-T10 message router allowlists actions and rejects malformed input", (
     "utf8",
   );
   assert.match(background, /createExtensionRouter|handleMessage/);
-  assert.match(background, /setPanelBehavior/);
-  assert.match(background, /openPanelOnActionClick:\s*true/);
+  assert.match(background, /openPanelOnActionClick:\s*false/);
 });
 
-test("P023-T11 Side Panel replaces tab-opening workspace navigation", () => {
+test("P023-T11 popup replaces tab-opening workspace navigation", () => {
   const messages = fs.readFileSync(path.join(root, "apps/extension/src/shared/messages.ts"), "utf8");
   assert.doesNotMatch(messages, /tabs\.create/);
   assert.doesNotMatch(messages, /workspace\.html/);
-  assert.ok(!fs.existsSync(path.join(root, "apps/extension/src/entrypoints/popup")));
+  assert.ok(fs.existsSync(path.join(root, "apps/extension/src/entrypoints/popup/Popup.tsx")));
   const workflow = fs.readFileSync(
     path.join(root, "apps/extension/src/shared/workflow/WorkflowApp.tsx"),
     "utf8",
   );
-  assert.match(workflow, /shell--sidepanel|Advanced options|Confirm language/);
+  assert.match(workflow, /shell--popup|Advanced options|Confirm language/);
 });

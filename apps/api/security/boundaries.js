@@ -22,7 +22,7 @@ const FORBIDDEN_PERMISSIONS = Object.freeze([
   "dns",
 ]);
 
-const ALLOWED_PERMISSIONS = Object.freeze(["storage", "alarms", "sidePanel"]);
+const ALLOWED_PERMISSIONS = Object.freeze(["storage", "alarms"]);
 
 const MAX_REQUEST_BYTES = 32 * 1024 * 1024;
 const DEFAULT_RATE = 60; // per window
@@ -174,7 +174,7 @@ function listThreatMitigations() {
 function validateSecurityBoundariesModule() {
   const errors = [];
   const good = reviewExtensionManifest({
-    permissions: ["storage", "alarms", "sidePanel"],
+    permissions: ["storage", "alarms"],
     optional_permissions: [],
     host_permissions: ["https://api.mossworkflow.dev/", "https://uploads.mossworkflow.dev/"],
     csp: "script-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'",

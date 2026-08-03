@@ -39,10 +39,10 @@ test("P037-T02 restart clears files and persistable draft stays allowlisted", ()
   }
 });
 
-test("P037-T03 workspace UI wires gates and docs", () => {
-  assert.match(workspace, /Local preview/);
-  assert.match(workspace, /Entitlement required|Simulate purchase/);
-  assert.match(workspace, /Open paywall/);
+test("P037-T03 popup workflow UI wires gates and docs", () => {
+  assert.match(workspace, /Local preview|Local demo/);
+  assert.match(workspace, /purchaseDemoEntitlement|Unlock/);
+  assert.match(workspace, /Start Pair Check|paywall/i);
   assert.match(workspace, /role="banner"/);
   assert.match(workspace, /role="contentinfo"/);
   assert.match(doc, /24-hour/);

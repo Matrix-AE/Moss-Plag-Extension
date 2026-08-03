@@ -10,6 +10,10 @@ const language = require(path.join(root, "packages/ui/language"));
 const settings = require(path.join(root, "packages/ui/settings"));
 const workflowPath = path.join(root, "apps/extension/src/shared/workflow/WorkflowApp.tsx");
 const workflow = fs.readFileSync(workflowPath, "utf8");
+const entitlementSrc = fs.readFileSync(
+  path.join(root, "apps/extension/src/shared/entitlement-demo.ts"),
+  "utf8",
+);
 const css = fs.readFileSync(path.join(root, "apps/extension/src/styles/base.css"), "utf8");
 const background = fs.readFileSync(
   path.join(root, "apps/extension/src/entrypoints/background.ts"),
@@ -17,10 +21,11 @@ const background = fs.readFileSync(
 );
 const shellDoc = fs.readFileSync(path.join(root, "docs/engineering/extension-shell.md"), "utf8");
 const localDoc = fs.readFileSync(path.join(root, "docs/engineering/extension-local-testing.md"), "utf8");
+const changeNote = fs.readFileSync(path.join(root, ".changes/0049-popup-paywall.md"), "utf8");
 
 const caps = language.normalizeCapabilities(language.createMossCapabilitiesFixture()).capabilities;
 
-test("P-SP-T01 capability fixture covers every screenshot MOSS language", () => {
+test("P-POP-T01 capability fixture covers every screenshot MOSS language", () => {
   const expected = [
     "c",
     "cc",
@@ -52,7 +57,7 @@ test("P-SP-T01 capability fixture covers every screenshot MOSS language", () => 
   assert.equal(language.validateLanguageModule().ok, true);
 });
 
-test("P-SP-T02 M/N/C bounds, file restrictions, derived directory, experimental lockout", () => {
+test("P-POP-T02 M/N/C bounds, file restrictions, derived directory, experimental lockout", () => {
   const { settings: s } = settings.createSettings();
   assert.equal(settings.updateSetting(s, "commonMatchThreshold", 0).ok, false);
   assert.equal(settings.updateSetting(s, "commonMatchThreshold", 10).ok, true);
@@ -69,7 +74,7 @@ test("P-SP-T02 M/N/C bounds, file restrictions, derived directory, experimental 
   assert.match(settings.buildSettingsPanelHtml(s).html, /Experimental server is unavailable/);
 });
 
-test("P-SP-T03 masked provider ID never looks like auth and rejects junk", () => {
+test("P-POP-T03 masked provider ID never looks like auth and rejects junk", () => {
   const good = settings.maskProviderId("987654321");
   assert.equal(good.ok, true);
   assert.match(good.masked, /\*+4321$/);
@@ -79,25 +84,46 @@ test("P-SP-T03 masked provider ID never looks like auth and rejects junk", () =>
   assert.doesNotMatch(workflow, /storage\.sync/);
 });
 
-test("P-SP-T04 progressive disclosure, sticky CTA, focus-friendly side panel chrome", () => {
+test("P-POP-T04 progressive disclosure, sticky CTA, focus-friendly popup chrome", () => {
   assert.match(workflow, /Advanced options/);
   assert.match(workflow, /aria-expanded=\{advancedOpen\}/);
-  assert.match(workflow, /sticky-cta|sidepanel-footer/);
+  assert.match(workflow, /sticky-cta|popup-footer/);
   assert.match(workflow, /info-tip/);
   assert.match(workflow, /Confirm language/);
-  assert.match(css, /shell--sidepanel/);
-  assert.match(css, /min-width:\s*360px/);
-  assert.match(css, /max-width:\s*600px/);
+  assert.match(css, /shell--popup/);
+  assert.match(css, /status-card/);
   assert.match(css, /180ms/);
   assert.match(css, /focus-visible/);
-  assert.match(css, /segmented/);
+  assert.match(css, /settings-chip/);
 });
 
-test("P-SP-T05 no tab-opening workspace/popup flow; Side Panel behavior is wired", () => {
-  assert.match(background, /openPanelOnActionClick:\s*true/);
+test("P-POP-T05 popup is primary; Side Panel open-on-action is off; no workspace tabs", () => {
+  assert.match(background, /openPanelOnActionClick:\s*false/);
   assert.doesNotMatch(background, /tabs\.create/);
-  assert.match(shellDoc, /`sidePanel`/);
-  assert.match(localDoc, /Side Panel|toolbar/i);
-  assert.ok(fs.existsSync(path.join(root, "apps/extension/src/entrypoints/sidepanel/index.html")));
-  assert.ok(!fs.existsSync(path.join(root, "apps/extension/src/entrypoints/popup/Popup.tsx")));
+  assert.match(shellDoc, /default_popup|Popup/);
+  assert.match(localDoc, /popup/i);
+  assert.ok(fs.existsSync(path.join(root, "apps/extension/src/entrypoints/popup/Popup.tsx")));
+  assert.ok(!fs.existsSync(path.join(root, "apps/extension/src/entrypoints/sidepanel")));
+});
+
+test("P-POP-T06 offer is $15 / 15 runs / max 2 files with Prompt 006 note", () => {
+  assert.match(entitlementSrc, /priceUsd:\s*15/);
+  assert.match(entitlementSrc, /runs:\s*15/);
+  assert.match(entitlementSrc, /maxFilesPerRun:\s*2/);
+  assert.match(entitlementSrc, /Prompt 006/);
+  assert.match(workflow, /\$\{OFFER\.priceUsd\}|\$15|Unlock/);
+  assert.match(workflow, /maxFilesPerRun|max 2/);
+  assert.match(changeNote, /15 runs/);
+  assert.match(changeNote, /40/);
+  assert.match(shellDoc, /15.*runs|15\/2/i);
+});
+
+test("P-POP-T07 auth and paywall gate workflow until entitled", () => {
+  assert.match(workflow, /gate === "auth"/);
+  assert.match(workflow, /gate === "paywall"/);
+  assert.match(workflow, /gate === "portal"/);
+  assert.match(workflow, /Files have not been uploaded yet/);
+  assert.match(workflow, /consumeDemoRun|purchaseDemoEntitlement/);
+  assert.match(workflow, /Start Pair Check/);
+  assert.doesNotMatch(workflow, /moss\.stanford\.edu|sk_live/);
 });

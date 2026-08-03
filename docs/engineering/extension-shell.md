@@ -14,15 +14,15 @@
 
 | Surface | Entry point | Purpose |
 | --- | --- | --- |
-| Side Panel | `src/entrypoints/sidepanel` → `sidepanel.html` | Complete comparison workflow beside the browser |
+| Popup | `src/entrypoints/popup` → `popup.html` | Primary product surface: account, paywall, Pair Check workflow |
 | Settings | `src/entrypoints/settings` → `settings.html` | Origins, permissions in use, account notes (embedded options UI) |
-| Service worker | `src/entrypoints/background.ts` → `background.js` | Message router, storage owner, Side Panel open-on-action behavior |
+| Service worker | `src/entrypoints/background.ts` → `background.js` | Message router, storage owner; Side Panel open-on-action stays off |
 
-The toolbar action opens the Side Panel directly (`sidePanel.setPanelBehavior({ openPanelOnActionClick: true })`).
-There is no popup and the shell never opens `workspace.html` in a new tab. The service worker is
-suspended aggressively, so it never holds session state in memory. Anything durable goes to
-`storage.local` — see `docs/engineering/extension-state.md` (Prompt 024) for ownership, TTL, and
-message allowlists.
+The toolbar action opens the compact popup (`action.default_popup`). Side Panel is not the
+primary surface (`openPanelOnActionClick: false`). The shell never opens `workspace.html` in a new
+tab. The service worker is suspended aggressively, so it never holds session state in memory.
+Anything durable goes to `storage.local` — see `docs/engineering/extension-state.md` (Prompt 024)
+for ownership, TTL, and message allowlists.
 
 ## Permissions
 
@@ -31,13 +31,12 @@ build when the manifest and this table disagree in either direction.
 
 | Permission | Feature that needs it |
 | --- | --- |
-| `storage` | Persists drafts and active job references on the device so a closed panel or suspended worker can recover |
+| `storage` | Persists drafts, active job references, and local demo entitlement on the device so a closed popup or suspended worker can recover |
 | `alarms` | Re-checks job status after the service worker is suspended, instead of holding a timer in memory |
-| `sidePanel` | Hosts the complete Code Similarity workflow in Chrome’s Side Panel and opens it from the toolbar action |
 
-No optional permissions ship. No `tabs`, `scripting`, `downloads`, or broad host access is requested;
-the shell opens its own pages with `runtime.getURL` / Side Panel APIs and never injects into
-third-party pages.
+No optional permissions ship. No `tabs`, `scripting`, `downloads`, `sidePanel`, or broad host access
+is requested; the shell opens its own pages with `runtime.getURL` / `default_popup` and never
+injects into third-party pages.
 
 ## Origins
 
@@ -74,18 +73,27 @@ minification on, targeting Chrome 120.
 
 ## Service worker suspension
 
-The worker registers `runtime.onInstalled`, configures Side Panel open-on-action behavior, and a
-single `runtime.onMessage` router. Messages are validated against an action allowlist
-(`src/shared/messages.ts`); unknown or malformed messages get `{ ok: false, error }` instead of
-throwing. UI surfaces treat a failed round trip as recoverable and offer a retry, because the first
-message after suspension restarts the worker.
+The worker registers `runtime.onInstalled` and a single `runtime.onMessage` router. Messages are
+validated against an action allowlist (`src/shared/messages.ts`); unknown or malformed messages get
+`{ ok: false, error }` instead of throwing. UI surfaces treat a failed round trip as recoverable and
+offer a retry, because the first message after suspension restarts the worker. If a leftover
+Side Panel API is present, the worker sets `openPanelOnActionClick: false` so the toolbar still opens
+the popup.
+
+## Product gate (popup)
+
+1. **Account** — create or sign in (demo local account until auth API is live).
+2. **Paywall** — `$15` unlocks **15** runs with **max 2 files** per run (Pair Check). Files are not
+   uploaded at checkout. Prompt 006 historically modeled 40 checks; product UX now sells 15/2.
+3. **Portal** — entitled Pair Check controls (language, two file pickers, advanced options, consent,
+   start run). Remaining runs decrement on start (local demo entitlement).
 
 ## Verification
 
 - `npm run check:extension` runs the automated manifest/CSP/permission/source-map/forbidden-import gates.
 - `tests/prompt-023-extension-shell.test.js` builds the extension and asserts each gate, including
   negative cases for undocumented permissions, weak CSP, and shipped source maps.
-- `tests/prompt-sidepanel-workflow.test.js` covers capability languages, advanced controls, and the
-  Side Panel migration.
-- Manual load-unpacked in Chrome 120+ confirms the toolbar opens the Side Panel and survives worker
+- `tests/prompt-popup-paywall.test.js` covers capability languages, advanced controls, offer copy,
+  and popup-primary wiring.
+- Manual load-unpacked in Chrome 120+ confirms the toolbar opens the popup and survives worker
   suspension.

@@ -5,7 +5,6 @@ import { createExtensionRouter, createExtensionStateStore } from "../shared/mess
 
 type SidePanelApi = {
   setPanelBehavior: (behavior: { openPanelOnActionClick: boolean }) => Promise<void>;
-  open?: (options: { windowId?: number }) => Promise<void>;
 };
 
 function getSidePanel(): SidePanelApi | undefined {
@@ -19,20 +18,14 @@ export default defineBackground(() => {
   const sidePanel = getSidePanel();
   const handleMessage = createExtensionRouter(store, {
     openWorkspace: async () => {
-      // Side Panel is the product surface — never open workspace.html in a tab.
-      // openPanelOnActionClick already covers toolbar clicks; this path is a no-op recovery hook.
-      if (sidePanel?.open) {
-        try {
-          await sidePanel.open({});
-        } catch {
-          // Opening without a user gesture can fail; toolbar click remains the primary path.
-        }
-      }
+      // Popup is the product surface — never open workspace.html in a tab.
+      // Toolbar click already opens default_popup; this path is intentionally a no-op.
     },
   });
 
+  // Demote Side Panel if Chromium still exposes the API from a leftover build.
   void sidePanel
-    ?.setPanelBehavior({ openPanelOnActionClick: true })
+    ?.setPanelBehavior({ openPanelOnActionClick: false })
     .catch(() => {
       // Older Chromium builds without sidePanel should not crash the worker.
     });
@@ -40,7 +33,7 @@ export default defineBackground(() => {
   browser.runtime.onInstalled.addListener(async () => {
     // Seed / migrate schema on install and upgrade. load() writes empty state if needed.
     await store.load();
-    void sidePanel?.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => undefined);
+    void sidePanel?.setPanelBehavior({ openPanelOnActionClick: false }).catch(() => undefined);
   });
 
   // Alarms re-check purge after suspension instead of holding timers in memory.

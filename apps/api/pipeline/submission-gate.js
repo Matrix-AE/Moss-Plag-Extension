@@ -269,7 +269,7 @@ async function runSubmissionPipelineGate({ journeys = ["pair", "batch", "project
   const idorCheck = { ok: idor.ok === false };
 
   const perm = security.reviewExtensionManifest({
-    permissions: ["storage", "alarms", "sidePanel"],
+    permissions: ["storage", "alarms"],
     optional_permissions: [],
     host_permissions: ["https://api.mossworkflow.dev/", "https://uploads.mossworkflow.dev/"],
     csp: "script-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; connect-src 'self' https://api.mossworkflow.dev https://uploads.mossworkflow.dev",

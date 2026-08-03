@@ -82,7 +82,7 @@ test("P028-T06 package exports and extension wiring", () => {
   assert.equal(pkg.exports["./typography"], "./typography/index.js");
   assert.equal(pkg.exports["./typography.css"], "./typography/typography.css");
   assert.equal(pkg.exports["./icons"], "./icons/index.js");
-  for (const entry of ["sidepanel", "workspace", "settings"]) {
+  for (const entry of ["popup", "workspace", "settings"]) {
     const main = fs.readFileSync(
       path.join(root, `apps/extension/src/entrypoints/${entry}/main.tsx`),
       "utf8",
