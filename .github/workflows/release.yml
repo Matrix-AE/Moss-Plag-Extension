@@ -1,0 +1,87 @@
+name: Release
+
+# Manual only. Store submission and backend deployment are separate approvals and never
+# happen in the same job (Prompt 022 constraint).
+on:
+  workflow_dispatch:
+    inputs:
+      train:
+        description: Release train to prepare
+        required: true
+        type: choice
+        options:
+          - client
+          - server
+          - packages
+      confirm:
+        description: Type PUBLISH to promote after approval; anything else stays a dry run
+        required: false
+        default: dry-run
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    name: Prepare artifacts
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      train: ${{ inputs.train }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Dependency policy
+        run: npm run check:deps
+
+      - name: Quality gates
+        run: npm run typecheck && npm test && npm run build
+        env:
+          CI: true
+
+      - name: Release dry run
+        run: npm run release:dry-run
+
+      - name: Upload artifacts, SBOM, provenance, rollback plan
+        uses: actions/upload-artifact@v5
+        with:
+          name: release-${{ inputs.train }}
+          path: dist/release
+          retention-days: 30
+
+  submit-store:
+    name: Submit extension to store
+    needs: prepare
+    if: ${{ inputs.train == 'client' && inputs.confirm == 'PUBLISH' }}
+    runs-on: ubuntu-latest
+    environment: store-submission
+    steps:
+      - name: Require signed artifacts
+        run: |
+          echo "Store submission requires signed artifacts and a reviewed staged rollout plan."
+          echo "Signing keys are not provisioned; see docs/engineering/release-process.md."
+          exit 1
+
+  deploy-backend:
+    name: Deploy backend
+    needs: prepare
+    if: ${{ inputs.train == 'server' && inputs.confirm == 'PUBLISH' }}
+    runs-on: ubuntu-latest
+    environment: production-backend
+    steps:
+      - name: Require signed artifacts
+        run: |
+          echo "Backend deployment requires signed artifacts and a recorded rollback target."
+          echo "Signing keys are not provisioned; see docs/engineering/release-process.md."
+          exit 1

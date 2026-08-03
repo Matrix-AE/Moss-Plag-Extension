@@ -55,5 +55,11 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Dependency policy
+        run: npm run check:deps
+
+      - name: Release dry run
+        run: npm run release:dry-run
+
       - name: Secret canary scan
         run: node -e "const fs=require('fs');const {scanForCommittedCanaries}=require('./packages/config/env.js');const text=fs.readFileSync('package-lock.json','utf8');if(scanForCommittedCanaries(text).length){process.exit(1)}"

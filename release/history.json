@@ -1,0 +1,5 @@
+{
+  "schemaVersion": 1,
+  "note": "Append one entry per promoted release. Rollback evidence is derived from the previous entry of the same train.",
+  "releases": []
+}

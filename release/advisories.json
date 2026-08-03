@@ -1,0 +1,6 @@
+{
+  "schemaVersion": 1,
+  "updatedAt": "2026-08-03",
+  "note": "Manually curated blocklist applied by scripts/check-dependencies.js until a hosted advisory feed is wired in.",
+  "blocked": []
+}

@@ -39,7 +39,7 @@ test("P021-T05 every workflow step maps to a documented local gate", () => {
   const text = fs.readFileSync(workflowPath, "utf8");
   const doc = fs.readFileSync(path.join(root, "docs/engineering/ci.md"), "utf8");
   const pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
-  const scripts = [...text.matchAll(/run: npm run ([a-z:]+)/g)].map((match) => match[1]);
+  const scripts = [...text.matchAll(/run: npm run ([a-z:-]+)/g)].map((match) => match[1]);
   assert.ok(scripts.length > 0);
   for (const script of scripts) {
     assert.ok(pkg.scripts[script], `package.json is missing script ${script}`);

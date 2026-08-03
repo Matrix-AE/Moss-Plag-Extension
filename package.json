@@ -23,6 +23,8 @@
     "prebuild": "node scripts/check-node-version.js",
     "build": "tsc -b --pretty false",
     "check:runtime": "node scripts/check-node-version.js",
+    "check:deps": "node scripts/check-dependencies.js",
+    "release:dry-run": "node scripts/release/dry-run.js",
     "format": "node scripts/check-editorconfig.js",
     "format:check": "node scripts/check-editorconfig.js"
   },
