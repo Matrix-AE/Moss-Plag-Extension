@@ -16,4 +16,5 @@ module.exports = {
   commercialGates: require("./commerce/commercial-gates"),
   providerCapacity: require("./commerce/provider-capacity"),
   customerOffer: require("./commerce/customer-offer"),
+  providerOnboarding: require("./provider/onboarding"),
 };

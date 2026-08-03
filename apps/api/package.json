@@ -23,7 +23,8 @@
     "./pipeline/submission-gate": "./pipeline/submission-gate.js",
     "./commerce/commercial-gates": "./commerce/commercial-gates.js",
     "./commerce/provider-capacity": "./commerce/provider-capacity.js",
-    "./commerce/customer-offer": "./commerce/customer-offer.js"
+    "./commerce/customer-offer": "./commerce/customer-offer.js",
+    "./provider/onboarding": "./provider/onboarding.js"
   },
   "dependencies": {
     "@moss/domain": "0.0.0",
