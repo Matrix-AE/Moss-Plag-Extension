@@ -29,7 +29,8 @@
     "./legal/terms": "./legal/terms.js",
     "./legal/privacy": "./legal/privacy.js",
     "./legal/consent-copy": "./legal/consent-copy.js",
-    "./commerce/entitlements": "./commerce/entitlements.js"
+    "./commerce/entitlements": "./commerce/entitlements.js",
+    "./commerce/checkout": "./commerce/checkout.js"
   },
   "dependencies": {
     "@moss/domain": "0.0.0",

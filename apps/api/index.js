@@ -22,4 +22,5 @@ module.exports = {
   legalPrivacy: require("./legal/privacy"),
   consentCopy: require("./legal/consent-copy"),
   entitlements: require("./commerce/entitlements"),
+  checkout: require("./commerce/checkout"),
 };
