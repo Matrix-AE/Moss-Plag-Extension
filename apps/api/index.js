@@ -21,4 +21,5 @@ module.exports = {
   legalTerms: require("./legal/terms"),
   legalPrivacy: require("./legal/privacy"),
   consentCopy: require("./legal/consent-copy"),
+  entitlements: require("./commerce/entitlements"),
 };
