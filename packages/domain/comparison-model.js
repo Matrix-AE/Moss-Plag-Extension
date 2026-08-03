@@ -1,8 +1,10 @@
-/**
- * Prompt 011 submission/comparison domain model.
- * Pure validation + examples — no I/O or provider calls.
- */
 "use strict";
+
+/**
+ * Shared comparison domain model (Prompt 036).
+ * Compatible across extension, API, and worker. Source bytes and absolute paths
+ * never enter persisted metadata.
+ */
 
 const SCHEMA_VERSION = 1;
 
@@ -17,6 +19,24 @@ const JOB_STATUSES = Object.freeze([
   "failed",
   "cancelled",
   "ambiguous",
+]);
+
+const UPLOAD_STATES = Object.freeze([
+  "local",
+  "pending",
+  "uploading",
+  "uploaded",
+  "failed",
+]);
+
+const FORBIDDEN_PERSISTED_FILE_KEYS = Object.freeze([
+  "source",
+  "content",
+  "bytesContent",
+  "absolutePath",
+  "fullPath",
+  "path",
+  "webkitRelativePath",
 ]);
 
 function freezeDeep(value) {
@@ -34,8 +54,19 @@ function safeProtocolName(displayName, index) {
     .replace(/[^A-Za-z0-9._-]+/g, "_")
     .replace(/^_+|_+$/g, "")
     .slice(0, 80);
-  const cleaned = base.length > 0 ? base : `file_${index}`;
-  return cleaned;
+  return base.length > 0 ? base : `file_${index}`;
+}
+
+function assertNoForbiddenKeys(object, pathLabel, errors) {
+  if (!object || typeof object !== "object") return;
+  for (const key of Object.keys(object)) {
+    if (FORBIDDEN_PERSISTED_FILE_KEYS.includes(key)) {
+      errors.push({
+        code: "forbidden-persisted-field",
+        message: `${pathLabel} must not persist ${key}.`,
+      });
+    }
+  }
 }
 
 function validateComparison(input) {
@@ -52,9 +83,25 @@ function validateComparison(input) {
   if (!JOB_STATUSES.includes(input.status)) {
     errors.push({ code: "status", message: "Unknown lifecycle status." });
   }
+  if (input.mode && !["pair", "batch"].includes(input.mode)) {
+    errors.push({ code: "mode", message: "mode must be pair or batch." });
+  }
+  if (input.mode === "pair" && Array.isArray(input.groups) && input.groups.length !== 2) {
+    errors.push({ code: "pair-count", message: "Pair mode requires exactly two groups." });
+  }
   if (!Array.isArray(input.groups) || input.groups.length < 2) {
     errors.push({ code: "group-count", message: "At least two logical submissions are required." });
   }
+  if (input.owner && typeof input.owner !== "object") {
+    errors.push({ code: "owner", message: "owner must be an object when present." });
+  }
+  if (input.createdAt && Number.isNaN(Date.parse(input.createdAt))) {
+    errors.push({ code: "created-at", message: "createdAt must be an ISO timestamp." });
+  }
+  if (input.updatedAt && Number.isNaN(Date.parse(input.updatedAt))) {
+    errors.push({ code: "updated-at", message: "updatedAt must be an ISO timestamp." });
+  }
+
   const languages = new Set();
   const groupIds = new Set();
   (input.groups || []).forEach((group, groupIndex) => {
@@ -68,6 +115,10 @@ function validateComparison(input) {
     }
     const protocolNames = new Set();
     group.files.forEach((file, fileIndex) => {
+      assertNoForbiddenKeys(file, `${group.id}/${fileIndex}`, errors);
+      if (!file.id) {
+        errors.push({ code: "file-id", message: `File in ${group.id} missing stable id.` });
+      }
       if (!file.displayName || !file.safeProtocolName) {
         errors.push({
           code: "file-names",
@@ -81,13 +132,19 @@ function validateComparison(input) {
         });
       }
       protocolNames.add(file.safeProtocolName);
-      if (file.language) {
-        languages.add(file.language);
+      if (typeof file.bytes !== "number" || file.bytes < 0) {
+        errors.push({ code: "file-bytes", message: `File in ${group.id} needs non-negative bytes.` });
       }
+      if (file.contentHash != null && !/^[a-f0-9]{64}$/i.test(file.contentHash)) {
+        errors.push({ code: "file-hash", message: `contentHash must be sha256 hex in ${group.id}.` });
+      }
+      if (file.uploadState && !UPLOAD_STATES.includes(file.uploadState)) {
+        errors.push({ code: "upload-state", message: `Unknown uploadState in ${group.id}.` });
+      }
+      if (file.language) languages.add(file.language);
       if (file.virtualPath && file.virtualPath.includes("..")) {
         errors.push({ code: "path-traversal", message: `Unsafe virtualPath in ${group.id}/${fileIndex}.` });
       }
-      // Trusted membership is the group id, never inferred solely from path.
       if (file.inferredFromPathOnly === true) {
         errors.push({
           code: "untrusted-grouping",
@@ -96,17 +153,21 @@ function validateComparison(input) {
       }
     });
   });
+
   if (languages.size > 1) {
     errors.push({ code: "mixed-language", message: "Mixed languages must be rejected or split." });
   }
   if (input.language && languages.size === 1 && [...languages][0] !== input.language) {
     errors.push({ code: "language-mismatch", message: "Selected language does not match files." });
   }
-  (input.baseFiles || []).forEach((file) => {
+
+  (input.baseFiles || []).forEach((file, index) => {
+    assertNoForbiddenKeys(file, `base/${index}`, errors);
     if (file.countsAsSubmission === true) {
       errors.push({ code: "base-as-submission", message: "Base files must not count as submissions." });
     }
   });
+
   if (input.result && input.status === "succeeded") {
     if (!input.result.reportUrlRef || typeof input.result.reportUrlRef !== "string") {
       errors.push({ code: "result-ref", message: "Succeeded jobs need an opaque reportUrlRef." });
@@ -118,11 +179,43 @@ function validateComparison(input) {
       });
     }
   }
+
   return { ok: errors.length === 0, errors };
 }
 
-function exampleTwoFiles() {
+function stamp(example) {
+  const now = "2026-08-03T08:00:00.000Z";
   return freezeDeep({
+    ...example,
+    owner: example.owner || { deviceId: "dev-local", accountRef: null },
+    createdAt: example.createdAt || now,
+    updatedAt: example.updatedAt || now,
+  });
+}
+
+function withUploadMeta(file, index) {
+  return {
+    ...file,
+    id: file.id || `file-${index}`,
+    uploadState: file.uploadState || "local",
+    contentHash: file.contentHash || null,
+  };
+}
+
+function enrich(example) {
+  const copy = JSON.parse(JSON.stringify(example));
+  copy.groups = copy.groups.map((group) => ({
+    ...group,
+    files: group.files.map((file, index) => withUploadMeta(file, index)),
+  }));
+  copy.baseFiles = (copy.baseFiles || []).map((file, index) => withUploadMeta(file, index));
+  return stamp(copy);
+}
+
+// --- fixtures (Prompt 011 + 036) -------------------------------------------------
+
+function exampleTwoFiles() {
+  return enrich({
     schemaVersion: SCHEMA_VERSION,
     idempotencyKey: "pair-demo-001",
     status: "ready",
@@ -140,6 +233,8 @@ function exampleTwoFiles() {
             virtualPath: "submission-a/solution_A.py",
             language: "python",
             bytes: 1200,
+            contentHash: "a".repeat(64),
+            uploadState: "local",
           },
         ],
       },
@@ -154,6 +249,8 @@ function exampleTwoFiles() {
             virtualPath: "submission-b/solution_B.py",
             language: "python",
             bytes: 1300,
+            contentHash: "b".repeat(64),
+            uploadState: "local",
           },
         ],
       },
@@ -178,11 +275,13 @@ function exampleManyFlatFiles() {
           virtualPath: `file-${i}/main${i}.java`,
           language: "java",
           bytes: 800 + i,
+          contentHash: String(i).repeat(64).slice(0, 64),
+          uploadState: "local",
         },
       ],
     });
   }
-  return freezeDeep({
+  return enrich({
     schemaVersion: SCHEMA_VERSION,
     idempotencyKey: "flat-5",
     status: "draft",
@@ -196,7 +295,7 @@ function exampleManyFlatFiles() {
 }
 
 function exampleTwoProjects() {
-  return freezeDeep({
+  return enrich({
     schemaVersion: SCHEMA_VERSION,
     idempotencyKey: "projects-2",
     status: "ready",
@@ -270,7 +369,7 @@ function exampleManyProjects() {
       })),
     });
   }
-  return freezeDeep({
+  return enrich({
     schemaVersion: SCHEMA_VERSION,
     idempotencyKey: "projects-4",
     status: "ready",
@@ -284,16 +383,14 @@ function exampleManyProjects() {
 }
 
 function exampleMixedLanguage() {
-  const base = exampleTwoFiles();
-  const copy = JSON.parse(JSON.stringify(base));
+  const copy = JSON.parse(JSON.stringify(exampleTwoFiles()));
   copy.groups[1].files[0].language = "javascript";
   copy.language = null;
   return freezeDeep(copy);
 }
 
 function exampleWithBaseCode() {
-  const base = exampleTwoFiles();
-  const copy = JSON.parse(JSON.stringify(base));
+  const copy = JSON.parse(JSON.stringify(exampleTwoFiles()));
   copy.baseFiles = [
     {
       id: "base-1",
@@ -303,6 +400,8 @@ function exampleWithBaseCode() {
       language: "python",
       bytes: 300,
       countsAsSubmission: false,
+      uploadState: "local",
+      contentHash: "c".repeat(64),
     },
   ];
   return freezeDeep(copy);
@@ -326,18 +425,25 @@ function exampleNestedPathTraversal() {
   return freezeDeep(copy);
 }
 
+function exampleWithAbsolutePathLeak() {
+  const copy = JSON.parse(JSON.stringify(exampleTwoFiles()));
+  copy.groups[0].files[0].absolutePath = "C:\\\\Users\\\\x\\\\secret.py";
+  return freezeDeep(copy);
+}
+
 function serialize(comparison) {
   return JSON.stringify(comparison);
 }
 
 function deserialize(text) {
-  const parsed = JSON.parse(text);
-  return freezeDeep(parsed);
+  return freezeDeep(JSON.parse(text));
 }
 
 module.exports = {
   JOB_STATUSES,
+  UPLOAD_STATES,
   SCHEMA_VERSION,
+  FORBIDDEN_PERSISTED_FILE_KEYS,
   deserialize,
   exampleDuplicateProtocolNames,
   exampleEmptyGroup,
@@ -347,6 +453,7 @@ module.exports = {
   exampleNestedPathTraversal,
   exampleTwoFiles,
   exampleTwoProjects,
+  exampleWithAbsolutePathLeak,
   exampleWithBaseCode,
   safeProtocolName,
   serialize,
