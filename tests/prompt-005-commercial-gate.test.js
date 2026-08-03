@@ -56,13 +56,13 @@ test("P005-T01 ADR has required sections in order", () => {
   }
 });
 
-test("P005-T02 hard-branch decision is stop and halts Moss-hosted backlog", () => {
-  assert.match(adr, /Status \| Accepted decision: \*\*stop\*\*/);
+test("P005-T02 historical stop ADR remains recorded and marked superseded", () => {
+  assert.match(adr, /Status \| \*\*Superseded\*\* by/);
   assert.match(adr, /\*\*Stop\.\*\*/);
   assert.match(adr, /`stop` ends execution/);
-  assert.match(adr, /Prompt 006\+ hosted-MOSS backlog execution is halted/);
+  assert.match(adr, /Historical stop\. Hosted-MOSS backlog may resume only under ADR-0005A/);
   assert.match(adr, /Executing Prompt 006 as if a Moss-hosted unit-economics model were approved/);
-  assert.doesNotMatch(adr, /Decision:\s*\*\*go\*\*/i);
+  assert.doesNotMatch(adr, /Status \| Accepted decision: \*\*go\*\*/);
 });
 
 test("P005-T03 rejected credential models include BYO, managed, and pooling", () => {
