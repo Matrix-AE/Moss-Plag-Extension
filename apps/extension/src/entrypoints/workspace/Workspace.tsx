@@ -238,6 +238,45 @@ export function Workspace() {
           </div>
         </section>
 
+        <section className="card" aria-labelledby="base-heading">
+          <h2 id="base-heading">Base code</h2>
+          <p className="status">
+            Optional starter or shared library files suppress expected overlap. Base files never
+            count as comparison groups and stay marked distinctly through review.
+          </p>
+          <label>
+            Add base files
+            <input type="file" multiple aria-label="Add base files" data-role="base" />
+          </label>
+        </section>
+
+        <section className="card settings-panel" aria-labelledby="settings-heading">
+          <h2 id="settings-heading">Comparison settings</h2>
+          <p className="status">
+            Safe defaults work untouched. Directory mode is derived from grouping. Experimental mode
+            is disabled.
+          </p>
+          <label className="row" htmlFor="result-count">
+            <span>Result count</span>
+            <input id="result-count" name="resultCount" type="number" min={1} max={1000} defaultValue={250} />
+          </label>
+          <label className="row" htmlFor="common-match">
+            <span>Common-match threshold</span>
+            <input id="common-match" type="number" min={1} max={1000} defaultValue={10} />
+          </label>
+        </section>
+
+        <section className="card" aria-labelledby="preflight-heading">
+          <h2 id="preflight-heading">Preflight</h2>
+          <p className="status">
+            Client preflight blocks invalid drafts; the backend remains authoritative. Warnings need
+            acknowledgement and reset after material changes.
+          </p>
+          <div className="preflight" role="region" aria-label="Preflight findings">
+            <p>Blocking and warning findings appear here before upload.</p>
+          </div>
+        </section>
+
         <section className="card" aria-labelledby="recoverable">
           <h2 id="recoverable">Recoverable state</h2>
           <p className="status">{note}</p>
@@ -291,7 +330,15 @@ export function Workspace() {
             <button type="button" onClick={tryStartJob}>
               Start job
             </button>
+            <button type="button" className="secondary" disabled>
+              Confirm and continue
+            </button>
           </div>
+          <p className="status">
+            Upload transfer starts only after entitlement and recorded consent. Progress reports
+            completed objects only — no fabricated percent. Restart requires file reselection unless
+            upload already completed.
+          </p>
         </section>
 
         <section className="card" aria-labelledby="demo-controls">

@@ -22,7 +22,11 @@
     "./mode-selector": "./mode-selector/index.js",
     "./intake": "./intake/index.js",
     "./language": "./language/index.js",
-    "./grouping": "./grouping/index.js"
+    "./grouping": "./grouping/index.js",
+    "./base-code": "./base-code/index.js",
+    "./preflight": "./preflight/index.js",
+    "./settings": "./settings/index.js",
+    "./review": "./review/index.js"
   },
   "scripts": {
     "emit:tokens": "node ../../scripts/emit-ui-tokens.js",
