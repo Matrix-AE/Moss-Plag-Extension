@@ -217,6 +217,27 @@ export function Workspace() {
           </div>
         </section>
 
+        <section className="card" aria-labelledby="grouping-heading">
+          <h2 id="grouping-heading">Grouping</h2>
+          <p className="status">
+            Suggested groups come from top-level folders; flat files stay separate. Rename, merge,
+            split, or move before continue. Comparison preview uses stable internal IDs — never
+            temporary server paths.
+          </p>
+          <div
+            className="grouping-preview"
+            role="region"
+            aria-label="Comparison preview"
+            data-mode={comparisonMode}
+          >
+            <p>
+              {comparisonMode === "pair"
+                ? "Pair Check preview: exactly two logical submissions required."
+                : "Batch Check preview: at least two logical submissions required."}
+            </p>
+          </div>
+        </section>
+
         <section className="card" aria-labelledby="recoverable">
           <h2 id="recoverable">Recoverable state</h2>
           <p className="status">{note}</p>

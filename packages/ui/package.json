@@ -21,7 +21,8 @@
     "./workspace-flow": "./workspace-flow/index.js",
     "./mode-selector": "./mode-selector/index.js",
     "./intake": "./intake/index.js",
-    "./language": "./language/index.js"
+    "./language": "./language/index.js",
+    "./grouping": "./grouping/index.js"
   },
   "scripts": {
     "emit:tokens": "node ../../scripts/emit-ui-tokens.js",

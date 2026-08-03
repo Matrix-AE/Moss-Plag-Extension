@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Grouping — Prompt 041</title>
+    <link rel="stylesheet" href="../tokens/tokens.css" />
+    <style>
+      body { margin: 16px; font-family: system-ui; background: var(--surface); color: var(--text); }
+      .group-preview { margin-top: 12px; padding: 12px 0; border-top: 1px solid var(--border, #ccc); }
+      button { margin-right: 8px; margin-top: 8px; }
+    </style>
+  </head>
+  <body data-theme="light">
+    <h1>Comparison preview</h1>
+    <p class="type-helper">
+      Group identity uses stable internal IDs only — never temporary server paths.
+    </p>
+    <div id="preview" class="grouping-preview" role="region" aria-label="Comparison preview">
+      <section class="group-preview" data-group-id="grp_demo_a">
+        <h3>alice</h3>
+        <p>2 files</p>
+        <ul>
+          <li>main.py</li>
+          <li>util.py</li>
+        </ul>
+      </section>
+      <section class="group-preview" data-group-id="grp_demo_b">
+        <h3>bob</h3>
+        <p>1 file</p>
+        <ul>
+          <li>main.py</li>
+        </ul>
+      </section>
+    </div>
+    <div>
+      <button type="button" id="merge">Merge demo</button>
+      <button type="button" id="split">Split demo</button>
+    </div>
+    <p id="status" role="status">Batch mode: two groups ready to compare.</p>
+    <script>
+      const status = document.getElementById("status");
+      document.getElementById("merge").addEventListener("click", () => {
+        status.textContent = "Merged into one group — batch validation will block continue until split.";
+      });
+      document.getElementById("split").addEventListener("click", () => {
+        status.textContent = "Split restored two groups with stable IDs.";
+      });
+    </script>
+  </body>
+</html>
