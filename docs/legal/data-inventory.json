@@ -1,0 +1,58 @@
+{
+  "version": "1.0.0",
+  "changeNotice": "Material inventory changes require policy version bump and user notice.",
+  "owner": "legal-privacy-reviewer",
+  "categories": [
+    {
+      "id": "account",
+      "purpose": "authenticate and support the buyer",
+      "basis": "contract",
+      "owner": "api",
+      "retention": "account-life-plus-tax"
+    },
+    {
+      "id": "payment-metadata",
+      "purpose": "fulfill purchase, refunds, disputes",
+      "basis": "contract/legal-obligation",
+      "owner": "finance",
+      "retention": "processor-and-tax-rules"
+    },
+    {
+      "id": "source-code",
+      "purpose": "perform similarity comparison",
+      "basis": "consent-and-contract",
+      "owner": "worker",
+      "retention": "temporary-hours-scale"
+    },
+    {
+      "id": "provider-userid",
+      "purpose": "submit via BYO Moss userid",
+      "basis": "contract",
+      "owner": "credential-vault",
+      "retention": "until-user-deletes-or-account-closed"
+    },
+    {
+      "id": "result-bearer-url",
+      "purpose": "show similarity report link",
+      "basis": "contract",
+      "owner": "results",
+      "retention": "until-forget-or-history-purge"
+    },
+    {
+      "id": "diagnostics",
+      "purpose": "security and reliability",
+      "basis": "legitimate-interest",
+      "owner": "ops",
+      "retention": "30-days-detailed"
+    }
+  ],
+  "subprocessors": [
+    { "name": "Stripe", "role": "payment-processor", "data": "payment-metadata" },
+    { "name": "Hosting provider", "role": "infrastructure", "data": "account-jobs-encrypted-blobs" },
+    {
+      "name": "Similarity provider (Moss path)",
+      "role": "comparison-processor",
+      "data": "source-and-result-urls"
+    }
+  ]
+}
