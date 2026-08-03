@@ -13,9 +13,12 @@
 
 1. Customer purchases and activates a device.
 2. Product shows Moss registration help (customer emails Moss themselves).
+   Popup gate `moss-id` renders the legacy two-line body (`registeruser` / `mail <email>`) via
+   `@moss/ui/moss-id` — the extension never auto-sends mail.
 3. Customer pastes **only** the numeric userid.
-4. `connect` validates numeric format, stores encrypted ref, returns **masked** display.
-5. `replace` / `deleteCredential` are tenant-scoped (IDOR denied).
+4. `connect` validates numeric format, stores encrypted/local-vault ref, returns **masked** display.
+5. Comparison portal unlocks only after a connected Moss userid (`resolveOnboardingGate`).
+6. `replace` / `deleteCredential` are tenant-scoped (IDOR denied).
 
 ## Forbidden Automation
 

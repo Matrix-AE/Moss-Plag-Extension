@@ -13,6 +13,7 @@
     "paths": {
       "@moss/ui/language": ["./src/shims/ui-language.d.ts"],
       "@moss/ui/settings": ["./src/shims/ui-settings.d.ts"],
+      "@moss/ui/moss-id": ["./src/shims/ui-moss-id.d.ts"],
       "@moss/ui/intake": ["./src/shims/ui-intake.d.ts"],
       "@moss/ui/grouping": ["./src/shims/ui-grouping.d.ts"],
       "@moss/ui/mode-selector": ["./src/shims/ui-mode-selector.d.ts"],

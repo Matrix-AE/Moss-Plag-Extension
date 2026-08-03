@@ -46,8 +46,9 @@ export function Settings() {
         <h2 id="account">Similarity account</h2>
         <p>
           Create or sign in from the toolbar popup, then unlock Pair Check ($15 / 15 runs / max 2
-          files). After purchase, connect your own numeric provider account from the popup Account
-          section (ADR-0005B). The ID is never used as extension authentication.
+          files). After purchase, complete **Connect Moss User ID** (BYO registration instructions,
+          then numeric userid only — ADR-0005B). The ID is never used as extension authentication.
+          Local demo login: <code>demo@mossworkflow.test</code> / <code>DemoTest1!</code>.
         </p>
       </section>
     </main>

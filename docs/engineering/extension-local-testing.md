@@ -11,6 +11,17 @@ npm run check:extension
 
 Unpacked output: `apps/extension/.output/chrome-mv3`
 
+## Deterministic demo login
+
+A fixed local demo account is seeded into `chrome.storage.local` on popup load:
+
+| Field | Value |
+| --- | --- |
+| Email / username | `demo@mossworkflow.test` |
+| Password | `DemoTest1!` |
+
+Use **Sign in** with those credentials. Create-account also works for other local-only emails (password ≥ 6 characters). Demo auth never leaves the device.
+
 ## Load in Chrome / Edge
 
 1. Open `chrome://extensions` (or `edge://extensions`).
@@ -24,7 +35,8 @@ Unpacked output: `apps/extension/.output/chrome-mv3`
 
 | Surface | Verify |
 | --- | --- |
-| Popup (~320×580, scroll inside) | Auth create/sign-in → paywall ($15 / 15 runs / max 2 files, no upload yet) → Pair Check portal (language, two file pickers, Advanced options, Account / masked provider ID, preflight, consents, Start Pair Check decrements remaining runs, SETTINGS footer) |
+| Popup (~320×580, scroll inside) | Sign in with demo credentials → paywall ($15 / 15 runs / max 2 files, no upload yet) → **Connect Moss User ID** (enter registration email, see exact `registeruser` / `mail …` body, ack, paste numeric ID e.g. `936770554`) → Pair Check portal (language, two file pickers, Advanced options, Account / masked provider ID, preflight, consents, Start Pair Check decrements remaining runs, SETTINGS footer) |
+| Moss ID step | Extension shows instructions only — it does **not** email Stanford. Portal stays locked until a numeric ID is saved (masked + local vault cipher; never sync). |
 | Settings (embedded options) | Origins and permissions copy (`storage`, `alarms` only) |
 | Themes | Popup forces dark brand tokens; settings still follow OS preference |
 

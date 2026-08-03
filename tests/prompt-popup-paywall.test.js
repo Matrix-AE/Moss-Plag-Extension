@@ -80,7 +80,7 @@ test("P-POP-T03 masked provider ID never looks like auth and rejects junk", () =
   assert.match(good.masked, /\*+4321$/);
   assert.equal(settings.maskProviderId("12").ok, false);
   assert.equal(settings.maskProviderId("abc").ok, false);
-  assert.match(workflow, /never authentication|encrypted-vault|Masked on device/i);
+  assert.match(workflow, /never authentication|local vault|Masked on device|Connected ID/i);
   assert.doesNotMatch(workflow, /storage\.sync/);
 });
 
@@ -121,9 +121,10 @@ test("P-POP-T06 offer is $15 / 15 runs / max 2 files with Prompt 006 note", () =
 test("P-POP-T07 auth and paywall gate workflow until entitled", () => {
   assert.match(workflow, /gate === "auth"/);
   assert.match(workflow, /gate === "paywall"/);
+  assert.match(workflow, /gate === "moss-id"/);
   assert.match(workflow, /gate === "portal"/);
   assert.match(workflow, /Files have not been uploaded yet/);
   assert.match(workflow, /consumeDemoRun|purchaseDemoEntitlement/);
   assert.match(workflow, /Start Pair Check/);
-  assert.doesNotMatch(workflow, /moss\.stanford\.edu|sk_live/);
+  assert.doesNotMatch(workflow, /sk_live|:7690|createConnection/);
 });

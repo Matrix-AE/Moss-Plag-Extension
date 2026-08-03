@@ -82,11 +82,17 @@ the popup.
 
 ## Product gate (popup)
 
-1. **Account** — create or sign in (demo local account until auth API is live).
+1. **Account** — create or sign in (demo local account until auth API is live). Deterministic demo:
+   `demo@mossworkflow.test` / `DemoTest1!`.
 2. **Paywall** — `$15` unlocks **15** runs with **max 2 files** per run (Pair Check). Files are not
    uploaded at checkout. Prompt 006 historically modeled 40 checks; product UX now sells 15/2.
-3. **Portal** — entitled Pair Check controls (language, two file pickers, advanced options, consent,
-   start run). Remaining runs decrement on start (local demo entitlement).
+3. **Connect Moss User ID (BYO)** — after entitlement, customer enters the email used for Moss
+   registration, sees the exact `registeruser` / `mail …` body to send themselves to
+   `moss@moss.stanford.edu` (never auto-sent), acknowledges, then pastes only the numeric userid.
+   Masked display + local vault-style cipher; never sync/logs; purchase IDs are not auth.
+4. **Portal** — unlocked only after Moss User ID is saved. Pair Check controls (language, two file
+   pickers, advanced options, consent, start run). Remaining runs decrement on start (local demo
+   entitlement).
 
 ## Verification
 
@@ -95,5 +101,7 @@ the popup.
   negative cases for undocumented permissions, weak CSP, and shipped source maps.
 - `tests/prompt-popup-paywall.test.js` covers capability languages, advanced controls, offer copy,
   and popup-primary wiring.
+- `tests/prompt-moss-id-onboarding.test.js` covers registration instruction templates, acknowledgement
+  gating, numeric ID validation/masking, portal lock until Moss ID connect, and demo login docs.
 - Manual load-unpacked in Chrome 120+ confirms the toolbar opens the popup and survives worker
   suspension.

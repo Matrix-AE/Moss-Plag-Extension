@@ -5,6 +5,7 @@ import * as intake from "@moss/ui/intake";
 import * as language from "@moss/ui/language";
 import * as grouping from "@moss/ui/grouping";
 import * as settingsMod from "@moss/ui/settings";
+import * as mossId from "@moss/ui/moss-id";
 import * as review from "@moss/ui/review";
 import * as preflight from "@moss/ui/preflight";
 import * as baseCode from "@moss/ui/base-code";
@@ -12,20 +13,28 @@ import * as baseCode from "@moss/ui/base-code";
 import { sendShellMessage } from "../shell-client";
 import type { PersistedState } from "../state-types";
 import {
+  DEMO_LOGIN,
   OFFER,
   clearDemoAccount,
+  clearDemoMossCredential,
   consumeDemoRun,
+  createDemoAccount,
   isEntitled,
+  isMossConnected,
   loadDemoAccount,
   loadDemoEntitlement,
+  loadDemoMossCredential,
   purchaseDemoEntitlement,
-  saveDemoAccount,
+  saveDemoMossCredential,
+  signInDemoAccount,
   type DemoAccount,
   type DemoEntitlement,
+  type DemoMossCredential,
 } from "../entitlement-demo";
 
-type Gate = "loading" | "auth" | "paywall" | "portal";
+type Gate = "loading" | "auth" | "paywall" | "moss-id" | "portal";
 type AuthMode = "signin" | "create";
+type MossIdStep = "register" | "enter-id";
 
 type LocalItem = {
   id?: string;
@@ -108,11 +117,12 @@ export function WorkflowApp() {
     [],
   );
   const [gate, setGate] = useState<Gate>("loading");
-  const [authMode, setAuthMode] = useState<AuthMode>("create");
-  const [email, setEmail] = useState("");
+  const [authMode, setAuthMode] = useState<AuthMode>("signin");
+  const [email, setEmail] = useState<string>(DEMO_LOGIN.email);
   const [password, setPassword] = useState("");
   const [account, setAccount] = useState<DemoAccount | null>(null);
   const [entitlement, setEntitlement] = useState<DemoEntitlement | null>(null);
+  const [mossCredential, setMossCredential] = useState<DemoMossCredential | null>(null);
   const [authError, setAuthError] = useState("");
   const [persisted, setPersisted] = useState<PersistedState | null>(null);
   const [note, setNote] = useState("Loading…");
@@ -131,6 +141,10 @@ export function WorkflowApp() {
   const [providerIdInput, setProviderIdInput] = useState("");
   const [providerIdMasked, setProviderIdMasked] = useState("");
   const [providerIdError, setProviderIdError] = useState("");
+  const [mossRegEmail, setMossRegEmail] = useState("");
+  const [mossAck, setMossAck] = useState(false);
+  const [mossIdStep, setMossIdStep] = useState<MossIdStep>("register");
+  const [mossIdError, setMossIdError] = useState("");
   const [settingError, setSettingError] = useState("");
   const [ownership, setOwnership] = useState(false);
   const [sensitiveLink, setSensitiveLink] = useState(false);
@@ -142,7 +156,16 @@ export function WorkflowApp() {
 
   const comparisonMode = "pair" as const;
   const entitled = isEntitled(entitlement);
+  const mossConnected = isMossConnected(mossCredential);
   const runsLeft = entitlement?.remaining ?? 0;
+  const registrationHelp = useMemo(
+    () => mossId.buildRegistrationInstructions(mossRegEmail || account?.email || ""),
+    [mossRegEmail, account?.email],
+  );
+  const canEnterId = mossId.canEnterMossUserId({
+    email: mossRegEmail || account?.email || "",
+    acknowledged: mossAck,
+  });
 
   const directoryMode = useMemo(
     () => settingsMod.deriveDirectoryMode({ groups }),
@@ -201,23 +224,40 @@ export function WorkflowApp() {
     setWarningsAck(false);
   }, []);
 
-  const resolveGate = useCallback((nextAccount: DemoAccount | null, nextEntitlement: DemoEntitlement | null) => {
-    if (!nextAccount) {
-      setGate("auth");
-      return;
-    }
-    if (!isEntitled(nextEntitlement)) {
-      setGate("paywall");
-      return;
-    }
-    setGate("portal");
-  }, []);
+  const resolveGate = useCallback(
+    (
+      nextAccount: DemoAccount | null,
+      nextEntitlement: DemoEntitlement | null,
+      nextMoss: DemoMossCredential | null,
+    ) => {
+      const next = mossId.resolveOnboardingGate({
+        account: nextAccount,
+        entitled: isEntitled(nextEntitlement),
+        mossConnected: isMossConnected(nextMoss),
+      });
+      setGate(next);
+    },
+    [],
+  );
 
   const refreshSession = useCallback(async () => {
-    const [nextAccount, nextEntitlement] = await Promise.all([loadDemoAccount(), loadDemoEntitlement()]);
+    const [nextAccount, nextEntitlement, nextMoss] = await Promise.all([
+      loadDemoAccount(),
+      loadDemoEntitlement(),
+      loadDemoMossCredential(),
+    ]);
     setAccount(nextAccount);
     setEntitlement(nextEntitlement);
-    resolveGate(nextAccount, nextEntitlement);
+    setMossCredential(nextMoss);
+    if (nextMoss?.display) {
+      setProviderIdMasked(nextMoss.display);
+    }
+    if (nextMoss?.registrationEmail) {
+      setMossRegEmail(nextMoss.registrationEmail);
+    } else if (nextAccount?.email) {
+      setMossRegEmail(nextAccount.email);
+    }
+    resolveGate(nextAccount, nextEntitlement, nextMoss);
   }, [resolveGate]);
 
   const refreshState = useCallback(async () => {
@@ -274,7 +314,6 @@ export function WorkflowApp() {
     setLanguageConfirmed(false);
     setSettings(createInitialSettings());
     setProviderIdInput("");
-    setProviderIdMasked("");
     setProviderIdError("");
     setProgressPhase(false);
     resetConsent();
@@ -283,40 +322,95 @@ export function WorkflowApp() {
 
   const onAuthSubmit = async () => {
     setAuthError("");
-    if (!password || password.length < 6) {
-      setAuthError("Use a password with at least 6 characters (demo only — not sent to a server).");
-      return;
-    }
-    const saved = await saveDemoAccount(email);
+    const saved =
+      authMode === "create"
+        ? await createDemoAccount(email, password)
+        : await signInDemoAccount(email, password);
     if (!saved.ok) {
       setAuthError(saved.error);
       return;
     }
     setAccount(saved.account);
     setPassword("");
-    const nextEntitlement = await loadDemoEntitlement();
+    setMossRegEmail(saved.account.email);
+    const [nextEntitlement, nextMoss] = await Promise.all([
+      loadDemoEntitlement(),
+      loadDemoMossCredential(),
+    ]);
     setEntitlement(nextEntitlement);
-    resolveGate(saved.account, nextEntitlement);
+    setMossCredential(nextMoss);
+    if (nextMoss?.display) setProviderIdMasked(nextMoss.display);
+    resolveGate(saved.account, nextEntitlement, nextMoss);
+    const nextGate = mossId.resolveOnboardingGate({
+      account: saved.account,
+      entitled: isEntitled(nextEntitlement),
+      mossConnected: isMossConnected(nextMoss),
+    });
     setGateMessage(
-      isEntitled(nextEntitlement)
+      nextGate === "portal"
         ? "Account ready. Pair Check is unlocked."
-        : "Account ready. Purchase unlocks 15 Pair Check runs.",
+        : nextGate === "moss-id"
+          ? "Purchase complete path: connect your Moss User ID before Pair Check."
+          : "Account ready. Purchase unlocks 15 Pair Check runs.",
     );
   };
 
   const onPurchase = async () => {
     const next = await purchaseDemoEntitlement();
     setEntitlement(next);
+    setMossIdStep("register");
+    setMossAck(false);
+    setMossIdError("");
+    if (!mossRegEmail && account?.email) setMossRegEmail(account.email);
+    setGate("moss-id");
+    setGateMessage(
+      `Demo entitlement active — ${next.remaining} of ${next.total} runs. Connect your Moss User ID next. Files are not uploaded yet.`,
+    );
+  };
+
+  const onSaveMossUserId = async () => {
+    setMossIdError("");
+    if (!canEnterId) {
+      setMossIdError("Acknowledge that you emailed Moss (or already have an ID) before continuing.");
+      return;
+    }
+    const regEmail = (mossRegEmail || account?.email || "").trim();
+    const saved = await saveDemoMossCredential(providerIdInput, regEmail);
+    if (!saved.ok) {
+      setMossIdError(saved.error);
+      setProviderIdError(saved.error);
+      return;
+    }
+    setMossCredential(saved.credential);
+    setProviderIdMasked(saved.credential.display);
+    setProviderIdInput("");
+    setProviderIdError("");
     setGate("portal");
     setGateMessage(
-      `Demo entitlement active — ${next.remaining} of ${next.total} runs left. Files are not uploaded yet.`,
+      `Moss User ID connected (${saved.credential.display}). Pair Check is ready — ${runsLeft || entitlement?.remaining || OFFER.runs} runs available.`,
     );
+  };
+
+  const onDisconnectMossId = async () => {
+    await clearDemoMossCredential();
+    setMossCredential(null);
+    setProviderIdInput("");
+    setProviderIdMasked("");
+    setProviderIdError("");
+    setMossAck(false);
+    setMossIdStep("register");
+    setGate("moss-id");
+    setGateMessage("Connect Moss ID to unlock the comparison portal.");
   };
 
   const onSignOut = async () => {
     await clearDemoAccount();
     setAccount(null);
     setEntitlement(null);
+    setMossCredential(null);
+    setProviderIdMasked("");
+    setMossAck(false);
+    setMossIdStep("register");
     await discard();
     setGate("auth");
     setGateMessage("Signed out. Sign in again to continue.");
@@ -346,6 +440,11 @@ export function WorkflowApp() {
   const onSourceFiles = (files: File[]) => {
     if (!entitled) {
       setNote("Purchase required before selecting files for a run.");
+      return;
+    }
+    if (!mossConnected) {
+      setNote("Connect Moss ID before selecting files.");
+      setGate("moss-id");
       return;
     }
     const room = OFFER.maxFilesPerRun - sourceItems.length;
@@ -407,7 +506,7 @@ export function WorkflowApp() {
   };
 
   const onBaseFiles = (files: File[]) => {
-    if (!entitled) return;
+    if (!entitled || !mossConnected) return;
     const result = baseCode.addBaseFiles(
       { ...draftSnapshot, baseFiles: baseItems },
       files,
@@ -439,21 +538,24 @@ export function WorkflowApp() {
   };
 
   const onProviderIdBlur = () => {
-    const masked = settingsMod.maskProviderId(providerIdInput);
+    const masked = mossId.maskMossUserId(providerIdInput);
     if (!masked.ok) {
-      setProviderIdError(masked.error || "Invalid provider id");
-      setProviderIdMasked("");
+      setProviderIdError(masked.error || "Invalid Moss User ID");
       return;
     }
-    // Keep raw digits only in component memory for later encrypted-vault wiring — never sync/log.
+    // Keep raw digits only in component memory until saved to local vault — never sync/log.
     setProviderIdInput(masked.digits);
-    setProviderIdMasked(masked.masked);
     setProviderIdError("");
   };
 
   const tryStartJob = async () => {
     if (!entitled || runsLeft < 1) {
       setGateMessage("Entitlement required before upload/job creation.");
+      return;
+    }
+    if (!mossConnected) {
+      setGateMessage("Connect Moss ID before starting a Pair Check.");
+      setGate("moss-id");
       return;
     }
     if (!languageCode || !languageConfirmed) {
@@ -506,22 +608,26 @@ export function WorkflowApp() {
       ? "Account required"
       : gate === "paywall"
         ? "Unlock Pair Check"
-        : progressPhase
-          ? "Run in progress"
-          : runsLeft < 1
-            ? "No runs left"
-            : "Ready to compare";
+        : gate === "moss-id"
+          ? "Connect Moss User ID"
+          : progressPhase
+            ? "Run in progress"
+            : runsLeft < 1
+              ? "No runs left"
+              : "Ready to compare";
 
   const statusDetail =
     gate === "auth"
       ? "Create or sign in to continue. Files stay on this device until you purchase and consent."
       : gate === "paywall"
         ? `$${OFFER.priceUsd} unlocks ${OFFER.runs} runs · max ${OFFER.maxFilesPerRun} files each. Nothing is uploaded at checkout.`
-        : progressPhase
-          ? note
-          : runsLeft < 1
-            ? "Local demo entitlement is exhausted. Billing API will replace this simulate-purchase path."
-            : `${runsLeft} of ${entitlement?.total ?? OFFER.runs} runs left · Pair Check · max ${OFFER.maxFilesPerRun} files`;
+        : gate === "moss-id"
+          ? "After purchase, register with Moss yourself and paste only the numeric userid. We never send that email for you."
+          : progressPhase
+            ? note
+            : runsLeft < 1
+              ? "Local demo entitlement is exhausted. Billing API will replace this simulate-purchase path."
+              : `${runsLeft} of ${entitlement?.total ?? OFFER.runs} runs left · Pair Check · max ${OFFER.maxFilesPerRun} files`;
 
   if (gate === "loading") {
     return (
@@ -596,7 +702,10 @@ export function WorkflowApp() {
                   {authError}
                 </p>
               ) : (
-                <p className="status">Demo account only — credentials stay on this device.</p>
+                <p className="status">
+                  Demo account only — credentials stay on this device. Try{" "}
+                  <code>{DEMO_LOGIN.email}</code> / <code>{DEMO_LOGIN.password}</code>.
+                </p>
               )}
               <button type="button" className="cta" onClick={() => void onAuthSubmit()}>
                 {authMode === "create" ? "Create account" : "Sign in"}
@@ -627,15 +736,107 @@ export function WorkflowApp() {
             </div>
           ) : null}
 
+          {gate === "moss-id" ? (
+            <div className="moss-id-panel">
+              <p className="status">
+                We never register Moss for you and never ask for your email password. Purchase IDs are
+                not authentication.
+              </p>
+              <label className="stack-field" htmlFor="moss-reg-email">
+                <span className="type-label">Email Address :</span>
+                <input
+                  id="moss-reg-email"
+                  type="email"
+                  autoComplete="email"
+                  value={mossRegEmail}
+                  onChange={(event) => {
+                    setMossRegEmail(event.target.value);
+                    setMossAck(false);
+                    setMossIdStep("register");
+                  }}
+                />
+              </label>
+              {registrationHelp.ok ? (
+                <div className="moss-register-help" aria-live="polite">
+                  <p className="status">{registrationHelp.headline}</p>
+                  <pre className="moss-register-body">{registrationHelp.body}</pre>
+                  <p className="status">
+                    Open your own email app and send that exact text to{" "}
+                    <strong>{mossId.REGISTRATION_ADDRESS}</strong>. This extension does not send the
+                    message.
+                  </p>
+                </div>
+              ) : (
+                <p className="status">Enter the email you will use to register with Moss.</p>
+              )}
+              <label className="row consent-row">
+                <input
+                  type="checkbox"
+                  checked={mossAck}
+                  disabled={!registrationHelp.ok}
+                  onChange={(event) => {
+                    setMossAck(event.target.checked);
+                    if (event.target.checked) setMossIdStep("enter-id");
+                    else setMossIdStep("register");
+                  }}
+                />
+                <span>I sent the email / I already received my numeric Moss User ID.</span>
+              </label>
+              {mossIdStep === "enter-id" && canEnterId ? (
+                <>
+                  <label className="stack-field" htmlFor="moss-user-id">
+                    <span className="type-label">Moss User ID</span>
+                    <input
+                      id="moss-user-id"
+                      type="password"
+                      inputMode="numeric"
+                      autoComplete="off"
+                      placeholder="e.g. 936770554"
+                      value={providerIdInput}
+                      onChange={(event) => setProviderIdInput(event.target.value)}
+                      onBlur={onProviderIdBlur}
+                      aria-describedby="moss-user-id-help"
+                    />
+                  </label>
+                  <p id="moss-user-id-help" className="status">
+                    Paste only the numeric userid from the Moss reply. It is masked on save and never
+                    used as extension login.
+                  </p>
+                  {mossIdError || providerIdError ? (
+                    <p className="status status--danger" role="alert">
+                      {mossIdError || providerIdError}
+                    </p>
+                  ) : null}
+                  <button type="button" className="cta" onClick={() => void onSaveMossUserId()}>
+                    Save Moss User ID
+                  </button>
+                </>
+              ) : (
+                <p className="status">Acknowledge the registration step to enter your Moss User ID.</p>
+              )}
+              <p className="status">
+                <a href={mossId.OFFICIAL_INFO_URL} target="_blank" rel="noreferrer">
+                  Official Moss information page
+                </a>
+              </p>
+            </div>
+          ) : null}
+
           {gate === "portal" ? (
             <div className="portal-cta">
               <button
                 type="button"
                 className="cta"
-                disabled={progressPhase || runsLeft < 1}
+                disabled={progressPhase || runsLeft < 1 || !mossConnected}
                 onClick={() => void tryStartJob()}
               >
-                {progressPhase ? "Working…" : runsLeft < 1 ? "No runs left" : "Start Pair Check"}
+                {progressPhase
+                  ? "Working…"
+                  : !mossConnected
+                    ? "Connect Moss ID"
+                    : runsLeft < 1
+                      ? "No runs left"
+                      : "Start Pair Check"}
               </button>
               <p className="status status-inline">
                 <span className="status-dot" aria-hidden="true" />
@@ -855,36 +1056,22 @@ export function WorkflowApp() {
                 <div className="disclosure-body">
                   <p className="status">Signed in as {account?.email}</p>
                   <p className="status">
-                    After entitlement, connect your own numeric provider ID (BYO). It is never authentication for this
-                    extension, never written to sync storage or logs, and is prepared for later encrypted-vault wiring.
+                    BYO Moss User ID is connected after entitlement. It is never authentication for
+                    this extension, never written to sync storage or logs, and uses local vault-style
+                    storage (masked display + obfuscated cipher only).
                   </p>
-                  <label className="stack-field" htmlFor="provider-id">
-                    <span>Provider ID</span>
-                    <input
-                      id="provider-id"
-                      type="password"
-                      inputMode="numeric"
-                      autoComplete="off"
-                      value={providerIdInput}
-                      disabled={!entitled}
-                      onChange={(event) => setProviderIdInput(event.target.value)}
-                      onBlur={onProviderIdBlur}
-                      aria-describedby="provider-id-help"
-                    />
-                  </label>
-                  <p id="provider-id-help" className="status">
-                    {providerIdMasked
-                      ? `Masked on device: ${providerIdMasked}`
-                      : "Enter the numeric ID, then leave the field to mask it."}
+                  <p className="status">
+                    Connected ID:{" "}
+                    <strong>{providerIdMasked || mossCredential?.display || "Not connected"}</strong>
                   </p>
-                  {providerIdError ? (
-                    <p className="status status--danger" role="alert">
-                      {providerIdError}
-                    </p>
-                  ) : null}
-                  <button type="button" className="secondary" onClick={() => void onSignOut()}>
-                    Sign out
-                  </button>
+                  <div className="row wrap">
+                    <button type="button" className="secondary" onClick={() => void onDisconnectMossId()}>
+                      Replace Moss ID
+                    </button>
+                    <button type="button" className="secondary" onClick={() => void onSignOut()}>
+                      Sign out
+                    </button>
+                  </div>
                 </div>
               ) : null}
             </section>
@@ -974,6 +1161,8 @@ export function WorkflowApp() {
             <>
               <span className="kbd">{runsLeft}</span> runs left
             </>
+          ) : gate === "moss-id" ? (
+            <>Connect Moss ID · BYO</>
           ) : (
             <>Local demo · no live billing</>
           )}
