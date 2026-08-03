@@ -20,7 +20,8 @@
     "./jobs/durable-status": "./jobs/durable-status.js",
     "./results/metadata": "./results/metadata.js",
     "./results/history": "./results/history.js",
-    "./pipeline/submission-gate": "./pipeline/submission-gate.js"
+    "./pipeline/submission-gate": "./pipeline/submission-gate.js",
+    "./commerce/commercial-gates": "./commerce/commercial-gates.js"
   },
   "dependencies": {
     "@moss/domain": "0.0.0",

@@ -13,4 +13,5 @@ module.exports = {
   resultMetadata: require("./results/metadata"),
   resultHistory: require("./results/history"),
   submissionPipelineGate: require("./pipeline/submission-gate"),
+  commercialGates: require("./commerce/commercial-gates"),
 };
