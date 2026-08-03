@@ -47,7 +47,11 @@ test("P008-T01 consent-retention doc has required sections in order", () => {
 });
 
 test("P008-T02 consent requirements C-01 through C-08 are unique", () => {
-  const ids = [...doc.matchAll(/\| (C-\d{2}) \|/g)].map((m) => m[1]);
+  const consentSection = doc.slice(
+    doc.indexOf("## Consent Requirements"),
+    doc.indexOf("## Retention Schedule"),
+  );
+  const ids = [...consentSection.matchAll(/^\| (C-\d{2}) \|/gm)].map((m) => m[1]);
   assert.equal(ids.length, 8);
   assert.equal(new Set(ids).size, 8);
   assert.match(doc, /Reset C-02\/C-03 whenever files, groups, language/);
