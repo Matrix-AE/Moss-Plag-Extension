@@ -1,26 +1,35 @@
+/* Values come from docs/design/art-direction.md; parity is asserted by tests/prompt-026-brand.test.js. */
 :root {
   color-scheme: light dark;
   --surface: #ffffff;
-  --surface-muted: #f4f5f7;
-  --border: #d8dbe0;
+  --surface-muted: #f2f4f8;
+  --border: #d3d8e0;
   --text: #14161a;
-  --text-muted: #5a6069;
-  --accent: #2f5bea;
+  --text-muted: #525a66;
+  --accent: #2f4fd8;
   --accent-text: #ffffff;
-  --focus: #0b57d0;
+  --focus: #0b47c7;
+  --info: #1f5a8f;
+  --caution: #7a4a05;
+  --danger: #96231f;
+  --success: #1c5f3a;
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --surface: #16181d;
-    --surface-muted: #1e2127;
-    --border: #333842;
-    --text: #f2f3f5;
-    --text-muted: #a8aeb8;
-    --accent: #7aa0ff;
-    --accent-text: #10121a;
-    --focus: #a8c4ff;
+    --surface: #15171c;
+    --surface-muted: #1e2128;
+    --border: #333945;
+    --text: #f1f3f6;
+    --text-muted: #aab2be;
+    --accent: #9db6ff;
+    --accent-text: #10131c;
+    --focus: #b9ccff;
+    --info: #96c4ee;
+    --caution: #e7b169;
+    --danger: #f2a09a;
+    --success: #89d6a8;
   }
 }
 
@@ -116,6 +125,27 @@ a:focus-visible {
   padding: 2px 10px;
   font-size: 12px;
   color: var(--text-muted);
+}
+
+/* Status colors describe the job, never the person, and always accompany a text label. */
+.badge--info {
+  color: var(--info);
+  border-color: currentColor;
+}
+
+.badge--caution {
+  color: var(--caution);
+  border-color: currentColor;
+}
+
+.badge--danger {
+  color: var(--danger);
+  border-color: currentColor;
+}
+
+.badge--success {
+  color: var(--success);
+  border-color: currentColor;
 }
 
 .rail {
