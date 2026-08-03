@@ -24,6 +24,7 @@
     "./commerce/commercial-gates": "./commerce/commercial-gates.js",
     "./commerce/provider-capacity": "./commerce/provider-capacity.js",
     "./commerce/customer-offer": "./commerce/customer-offer.js",
+    "./commerce/payment-architecture": "./commerce/payment-architecture.js",
     "./provider/onboarding": "./provider/onboarding.js"
   },
   "dependencies": {
