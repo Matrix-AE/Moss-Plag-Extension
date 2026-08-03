@@ -15,4 +15,5 @@ module.exports = {
   submissionPipelineGate: require("./pipeline/submission-gate"),
   commercialGates: require("./commerce/commercial-gates"),
   providerCapacity: require("./commerce/provider-capacity"),
+  customerOffer: require("./commerce/customer-offer"),
 };
