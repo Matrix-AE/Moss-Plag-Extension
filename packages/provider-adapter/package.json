@@ -5,7 +5,14 @@
   "type": "commonjs",
   "main": "index.js",
   "exports": {
-    ".": "./index.js"
+    ".": "./index.js",
+    "./stream-adapter": "./stream-adapter.js",
+    "./mock-moss-server": "./mock-moss-server.js",
+    "./line-parser": "./line-parser.js",
+    "./protocol-names": "./protocol-names.js",
+    "./socket-transport": "./socket-transport.js",
+    "./job-commands": "./job-commands.js",
+    "./failures": "./failures.js"
   },
   "dependencies": {
     "@moss/domain": "0.0.0",
