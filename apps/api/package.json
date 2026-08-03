@@ -2,6 +2,15 @@
   "name": "@moss/api",
   "version": "0.0.0",
   "private": true,
+  "type": "commonjs",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./jobs": "./jobs/state-machine.js",
+    "./auth": "./auth/index.js",
+    "./uploads/sessions": "./uploads/sessions.js",
+    "./uploads/transfer": "./uploads/transfer-manager.js"
+  },
   "dependencies": {
     "@moss/domain": "0.0.0",
     "@moss/contracts": "0.0.0"
