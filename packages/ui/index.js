@@ -10,11 +10,17 @@ function escapeText(value) {
 }
 
 const tokens = require("./tokens");
+const typography = require("./typography");
+const icons = require("./icons");
 
 module.exports = {
   escapeText,
   tokens,
+  typography,
+  icons,
   TOKEN_VERSION: tokens.TOKEN_VERSION,
+  TYPO_VERSION: typography.TYPO_VERSION,
+  ICON_VERSION: icons.ICON_VERSION,
   SEMANTIC: tokens.SEMANTIC,
   COMPONENTS: tokens.COMPONENTS,
   toCss: tokens.toCss,

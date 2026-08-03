@@ -2,6 +2,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
 import "@moss/ui/tokens.css";
+import "@moss/ui/typography.css";
 import "../../styles/base.css";
 import { Settings } from "./Settings";
 

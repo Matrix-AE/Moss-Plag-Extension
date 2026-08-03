@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Typography & icons — Prompt 028</title>
+    <link rel="stylesheet" href="../tokens/tokens.css" />
+    <link rel="stylesheet" href="../typography/typography.css" />
+    <style>
+      body { margin: 0; font-family: var(--font-ui); background: #e8ebf0; color: #14161a; }
+      header { padding: 16px 20px; background: #fff; border-bottom: 1px solid #d3d8e0; }
+      main { padding: 16px 20px 32px; display: grid; gap: 16px; }
+      .panel { background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 12px; padding: 14px; }
+      .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 8px; }
+      .icon-cell { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; }
+      button.action { display: inline-flex; align-items: center; gap: 6px; background: var(--accent); color: var(--accent-text); border: 0; border-radius: 8px; padding: 8px 12px; font: inherit; }
+      .clip { max-width: 220px; }
+      [data-theme="dark"] .panel, :root[data-theme="dark"] .panel { /* inherits token vars */ }
+    </style>
+  </head>
+  <body data-theme="light">
+    <header>
+      <h1 class="type-title">Typography and iconography specimens</h1>
+      <p class="type-helper">Local system fonts only. Critical actions always include a text label.</p>
+      <label>Theme <select id="theme"><option value="light">Light</option><option value="dark">Dark</option></select></label>
+    </header>
+    <main>
+      <section class="panel" id="roles">
+        <h2 class="type-subtitle">Content roles</h2>
+      </section>
+      <section class="panel">
+        <h2 class="type-subtitle">Localization stress / clipping</h2>
+        <p class="type-title clip" id="stress-title"></p>
+        <p class="type-code clip" id="stress-file"></p>
+        <p class="type-helper" id="stress-helper"></p>
+        <p class="type-numeric" id="stress-numeric"></p>
+      </section>
+      <section class="panel">
+        <h2 class="type-subtitle">Icons with accessible names</h2>
+        <div class="row" id="icons"></div>
+        <div class="row">
+          <button class="action type-action" type="button" id="labeled-action"></button>
+        </div>
+      </section>
+    </main>
+    <script src="./typo-browser.js"></script>
+  </body>
+</html>

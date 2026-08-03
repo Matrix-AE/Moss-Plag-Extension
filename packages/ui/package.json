@@ -7,9 +7,13 @@
   "exports": {
     ".": "./index.js",
     "./tokens": "./tokens/index.js",
-    "./tokens.css": "./tokens/tokens.css"
+    "./tokens.css": "./tokens/tokens.css",
+    "./typography": "./typography/index.js",
+    "./typography.css": "./typography/typography.css",
+    "./icons": "./icons/index.js"
   },
   "scripts": {
-    "emit:tokens": "node ../../scripts/emit-ui-tokens.js"
+    "emit:tokens": "node ../../scripts/emit-ui-tokens.js",
+    "emit:typography": "node ../../scripts/emit-typography.js"
   }
 }
