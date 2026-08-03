@@ -19,7 +19,9 @@
       "@moss/ui/mode-selector": ["./src/shims/ui-mode-selector.d.ts"],
       "@moss/ui/review": ["./src/shims/ui-review.d.ts"],
       "@moss/ui/preflight": ["./src/shims/ui-preflight.d.ts"],
-      "@moss/ui/base-code": ["./src/shims/ui-base-code.d.ts"]
+      "@moss/ui/base-code": ["./src/shims/ui-base-code.d.ts"],
+      "@moss/ui/run-lifecycle": ["./src/shims/ui-run-lifecycle.d.ts"],
+      "@moss/ui/result-experience": ["./src/shims/ui-result-experience.d.ts"]
     }
   },
   "include": ["src", "wxt.config.ts", ".wxt/**/*", "state/**/*.d.ts"]

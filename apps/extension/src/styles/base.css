@@ -517,6 +517,70 @@ ul {
   box-shadow: 0 8px 24px color-mix(in srgb, var(--text) 12%, transparent);
 }
 
+.run-result {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.run-phases {
+  list-style: none;
+  padding: 0;
+  margin: var(--space-xs) 0 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-hair) var(--space-xs);
+  font-size: 12px;
+}
+
+.run-phases li {
+  padding: 2px var(--space-xs);
+  border: var(--border-hairline) solid var(--border);
+  border-radius: var(--radius-pill);
+  color: var(--text-muted);
+}
+
+.run-phases li[data-state="current"] {
+  color: var(--text);
+  border-color: var(--accent);
+  font-weight: 600;
+}
+
+.run-phases li[data-state="done"] {
+  color: var(--success, var(--text));
+}
+
+.run-result__ready,
+.run-result__error {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  margin-top: var(--space-xs);
+}
+
+.run-result__link {
+  word-break: break-all;
+  font-size: 12px;
+}
+
+.run-result__link a {
+  color: var(--accent);
+}
+
+.run-result__warnings {
+  margin: 0;
+  padding-left: var(--space-lg);
+  font-size: 12px;
+}
+
+.status--notice {
+  padding: var(--space-xs);
+  border: var(--border-hairline) dashed var(--border);
+  border-radius: var(--radius-control);
+  color: var(--text);
+  background: color-mix(in srgb, var(--surface) 88%, var(--text) 12%);
+}
+
 .intake-dropzone {
   border: var(--border-hairline) dashed var(--border);
   border-radius: var(--radius-card);

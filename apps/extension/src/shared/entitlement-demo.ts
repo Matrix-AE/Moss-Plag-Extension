@@ -22,6 +22,9 @@ export const DEMO_LOGIN = Object.freeze({
 const ACCOUNT_KEY = "moss.demo.account";
 const ACCOUNTS_KEY = "moss.demo.accounts";
 const ENTITLEMENT_KEY = "moss.demo.entitlement";
+/** Run references already refunded, so a reopened popup cannot release the same run twice. */
+const RELEASED_RUNS_KEY = "moss.demo.releasedRuns";
+const RELEASED_RUNS_MAX = 50;
 /** Local-only Moss credential record — never sync; never stores plaintext userid. */
 const MOSS_CRED_KEY = "moss.demo.mossCredential";
 
@@ -168,7 +171,7 @@ export async function saveDemoAccount(
 }
 
 export async function clearDemoAccount(): Promise<void> {
-  await browser.storage.local.remove([ACCOUNT_KEY, ENTITLEMENT_KEY, MOSS_CRED_KEY]);
+  await browser.storage.local.remove([ACCOUNT_KEY, ENTITLEMENT_KEY, MOSS_CRED_KEY, RELEASED_RUNS_KEY]);
 }
 
 export async function loadDemoEntitlement(): Promise<DemoEntitlement | null> {
@@ -204,6 +207,42 @@ export async function consumeDemoRun(): Promise<
     remaining: current.remaining - 1,
   };
   await browser.storage.local.set({ [ENTITLEMENT_KEY]: entitlement });
+  return { ok: true, entitlement };
+}
+
+async function loadReleasedRuns(): Promise<string[]> {
+  const bag = await browser.storage.local.get(RELEASED_RUNS_KEY);
+  const value = bag[RELEASED_RUNS_KEY];
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+}
+
+/**
+ * Give a consumed run back when the attempt ended without anything being submitted.
+ * Releases are keyed by run reference so a recovered terminal job never refunds twice.
+ */
+export async function releaseDemoRun(
+  runRef: string,
+): Promise<{ ok: true; entitlement: DemoEntitlement } | { ok: false; error: string }> {
+  const current = await loadDemoEntitlement();
+  if (!current) {
+    return { ok: false, error: "No entitlement to credit." };
+  }
+  const key = String(runRef || "").trim();
+  if (!key) {
+    return { ok: false, error: "A run reference is required to release a run." };
+  }
+  const released = await loadReleasedRuns();
+  if (released.includes(key)) {
+    return { ok: true, entitlement: current };
+  }
+  const entitlement: DemoEntitlement = {
+    ...current,
+    remaining: Math.min(current.total, current.remaining + 1),
+  };
+  await browser.storage.local.set({
+    [ENTITLEMENT_KEY]: entitlement,
+    [RELEASED_RUNS_KEY]: [...released, key].slice(-RELEASED_RUNS_MAX),
+  });
   return { ok: true, entitlement };
 }
 

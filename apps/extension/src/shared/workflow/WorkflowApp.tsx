@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useMemo, useState, type ChangeEvent } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { browser } from "wxt/browser";
 
 import * as intake from "@moss/ui/intake";
@@ -9,6 +9,9 @@ import * as mossId from "@moss/ui/moss-id";
 import * as review from "@moss/ui/review";
 import * as preflight from "@moss/ui/preflight";
 import * as baseCode from "@moss/ui/base-code";
+import * as runLifecycle from "@moss/ui/run-lifecycle";
+import * as resultUx from "@moss/ui/result-experience";
+import type { RunState } from "@moss/ui/run-lifecycle";
 
 import { sendShellMessage } from "../shell-client";
 import type { PersistedState } from "../state-types";
@@ -25,6 +28,7 @@ import {
   loadDemoEntitlement,
   loadDemoMossCredential,
   purchaseDemoEntitlement,
+  releaseDemoRun,
   saveDemoMossCredential,
   signInDemoAccount,
   type DemoAccount,
@@ -60,6 +64,19 @@ type DraftSettings = {
   directoryMode: string;
   fileExtensions: string[];
 };
+
+/** Phase rail shown while a run is in flight — labels only, never a synthetic percentage. */
+const RUN_STEPS: ReadonlyArray<{ phase: string; label: string }> = [
+  { phase: "validate", label: "Check files" },
+  { phase: "upload", label: "Upload" },
+  { phase: "queue", label: "Queue" },
+  { phase: "submit", label: "Submit" },
+  { phase: "wait", label: "Wait for report" },
+];
+
+function formatClock(timestamp: number): string {
+  return new Date(timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
 
 function createInitialSettings(): DraftSettings {
   return {
@@ -152,9 +169,17 @@ export function WorkflowApp() {
   const [gateMessage, setGateMessage] = useState(
     "Sign in and purchase before files leave this device.",
   );
-  const [progressPhase, setProgressPhase] = useState(false);
+  const [run, setRun] = useState<RunState | null>(null);
+  const [reportUrl, setReportUrl] = useState("");
+  const [linkNote, setLinkNote] = useState("");
+  const [linkForgotten, setLinkForgotten] = useState(false);
+  const syncedRunRef = useRef("");
 
   const comparisonMode = "pair" as const;
+  const runPhase = run?.phase ?? null;
+  const runTerminal = runPhase ? runLifecycle.isTerminalPhase(runPhase) : false;
+  const progressPhase = Boolean(run) && !runTerminal;
+  const runView = run ? runLifecycle.describeRun(run, { reportUrl: reportUrl || null }) : null;
   const entitled = isEntitled(entitlement);
   const mossConnected = isMossConnected(mossCredential);
   const runsLeft = entitlement?.remaining ?? 0;
@@ -201,6 +226,17 @@ export function WorkflowApp() {
     }
     return preflight.runPreflight(draftSnapshot, { limits: preflight.DEFAULT_LIMITS });
   }, [draftSnapshot, groups.length]);
+
+  const resultView = useMemo(() => {
+    if (!run || run.phase !== "success") return null;
+    return resultUx.buildResultExperience({
+      completedAt: new Date(run.updatedAt).toISOString(),
+      language: run.language,
+      mode: run.comparison,
+      reportUrl: linkForgotten ? null : reportUrl || null,
+      urlForgotten: linkForgotten,
+    });
+  }, [run, reportUrl, linkForgotten]);
 
   const reviewSummary = useMemo(
     () =>
@@ -274,8 +310,19 @@ export function WorkflowApp() {
     } else if (Array.isArray(response.payload?.["purged"]) && (response.payload["purged"] as unknown[]).length) {
       setNote("Expired draft or job references were purged.");
     } else if (next?.activeJob) {
-      setNote(`Recovered active job ${next.activeJob.jobId} (${next.activeJob.status}).`);
-      setProgressPhase(true);
+      // A closed popup stops the local ticker, so recovery re-applies the deadline instead of
+      // resuming a spinner that can never end.
+      const recovered = runLifecycle.recoverRunState(next.activeJob, { now: Date.now() });
+      if (recovered.ok && recovered.state) {
+        setRun(recovered.state);
+        setNote(
+          recovered.deadlineExceeded
+            ? `Run ${next.activeJob.jobId} made no progress before its deadline. It is now closed as unresolved.`
+            : `Recovered run ${next.activeJob.jobId} (${next.activeJob.status}).`,
+        );
+      } else {
+        setNote(`Recovered active job ${next.activeJob.jobId} (${next.activeJob.status}).`);
+      }
     } else if (next?.draft) {
       setNote(`Recovered draft ${next.draft.draftId}. Reselect files after restart.`);
       if (next.draft.language) {
@@ -294,6 +341,62 @@ export function WorkflowApp() {
     })();
   }, [refreshSession, refreshState]);
 
+  const stepRun = useCallback(() => {
+    setRun((current) => {
+      if (!current || runLifecycle.isTerminalPhase(current.phase)) return current;
+      const advanced = runLifecycle.advanceRunState(current, { now: Date.now() });
+      if (!advanced.ok) {
+        return { ...current, phase: "failure", failureCode: "worker", updatedAt: Date.now() };
+      }
+      return advanced.state;
+    });
+  }, []);
+
+  // Drive the run forward. Every tick re-checks the wall-clock deadline, so the UI cannot sit on
+  // a non-terminal phase indefinitely.
+  useEffect(() => {
+    if (!run || runLifecycle.isTerminalPhase(run.phase)) return undefined;
+    const tick = window.setTimeout(stepRun, runLifecycle.DEMO_STEP_MS);
+    const deadline = window.setTimeout(
+      stepRun,
+      runLifecycle.remainingMs(run, Date.now()) + 50,
+    );
+    return () => {
+      window.clearTimeout(tick);
+      window.clearTimeout(deadline);
+    };
+  }, [run, stepRun]);
+
+  // Persist each phase, publish the result link, and refund a run only when nothing was submitted.
+  useEffect(() => {
+    if (!run || !run.jobId) return;
+    const key = `${run.jobId}:${run.phase}`;
+    if (syncedRunRef.current === key) return;
+    syncedRunRef.current = key;
+    void (async () => {
+      const payload: Record<string, unknown> = {
+        jobId: run.jobId,
+        status: runLifecycle.jobStatusForRun(run),
+      };
+      if (run.phase === "success" && run.resultRef) {
+        payload["reportUrlRef"] = run.resultRef;
+      }
+      const saved = await sendShellMessage("state/update-job", payload);
+      if (!saved.ok) {
+        setNote("Run status could not be saved locally. The run still resolves in this window.");
+      }
+      if (run.phase === "success" && run.resultRef) {
+        setReportUrl(browser.runtime.getURL(runLifecycle.demoReportPath(run.resultRef)));
+      }
+      if (runLifecycle.shouldReleaseRunCredit(run)) {
+        const released = await releaseDemoRun(run.jobId ?? "");
+        if (released.ok) {
+          setEntitlement(released.entitlement);
+        }
+      }
+    })();
+  }, [run]);
+
   const persistDraftShell = useCallback(async () => {
     await sendShellMessage("state/save-draft", {
       draftId: crypto.randomUUID(),
@@ -305,6 +408,18 @@ export function WorkflowApp() {
     await refreshState();
   }, [refreshState, languageCode, groups.length, baseItems.length]);
 
+  /** Close out the current run locally so the next Start is not blocked by a bound job. */
+  const clearRun = useCallback(async () => {
+    if (run && !runLifecycle.isTerminalPhase(run.phase)) {
+      await sendShellMessage("state/update-job", { jobId: run.jobId, status: "cancelled" });
+    }
+    syncedRunRef.current = "";
+    setRun(null);
+    setReportUrl("");
+    setLinkNote("");
+    setLinkForgotten(false);
+  }, [run]);
+
   const discard = useCallback(async () => {
     await sendShellMessage("state/discard-draft");
     setSourceItems([]);
@@ -315,10 +430,10 @@ export function WorkflowApp() {
     setSettings(createInitialSettings());
     setProviderIdInput("");
     setProviderIdError("");
-    setProgressPhase(false);
+    await clearRun();
     resetConsent();
     await refreshState();
-  }, [refreshState, resetConsent]);
+  }, [clearRun, refreshState, resetConsent]);
 
   const onAuthSubmit = async () => {
     setAuthError("");
@@ -593,9 +708,90 @@ export function WorkflowApp() {
       return;
     }
     setEntitlement(consumed.entitlement);
-    setProgressPhase(true);
+
+    const jobId = `job-${crypto.randomUUID()}`;
+    const bound = await sendShellMessage("state/bind-job", {
+      jobId,
+      status: "ready",
+      mode: comparisonMode,
+      language: languageCode,
+      submissionIdempotencyKey: `idem-${crypto.randomUUID()}`,
+    });
+    if (!bound.ok) {
+      // Nothing was submitted, so the consumed run goes straight back.
+      const released = await releaseDemoRun(jobId);
+      if (released.ok) setEntitlement(released.entitlement);
+      setGateMessage(
+        bound.error === "active-job-exists"
+          ? "An earlier run is still unresolved. Close it below, then start again — your run was not used."
+          : "The background worker did not accept the run. Your run was not used; try again.",
+      );
+      await refreshState();
+      return;
+    }
+
+    syncedRunRef.current = "";
+    setReportUrl("");
+    setLinkNote("");
+    setLinkForgotten(false);
+    setRun(
+      runLifecycle.createRunState({
+        now: Date.now(),
+        jobId,
+        language: languageCode,
+        comparison: comparisonMode,
+      }),
+    );
     setGateMessage(
-      `Run started locally. ${consumed.entitlement.remaining} of ${consumed.entitlement.total} runs remaining. No fabricated percent is shown.`,
+      `Run started. ${consumed.entitlement.remaining} of ${consumed.entitlement.total} runs remaining. Phases are reported as they happen — no percentage is invented.`,
+    );
+    await refreshState();
+  };
+
+  const cancelRun = async () => {
+    if (!run || runLifecycle.isTerminalPhase(run.phase)) return;
+    const cancelled = runLifecycle.advanceRunState(run, { now: Date.now(), event: "cancel" });
+    if (cancelled.ok) setRun(cancelled.state);
+  };
+
+  const startOver = async () => {
+    await clearRun();
+    await refreshState();
+    setGateMessage(
+      runsLeft > 0
+        ? "Reselect files and start a new Pair Check when you are ready."
+        : "No runs remaining for this local entitlement.",
+    );
+  };
+
+  const onRecoveryAction = async (actionId: string) => {
+    if (actionId === "settings") {
+      openSettings();
+      return;
+    }
+    if (actionId === "support" || actionId === "history" || actionId === "fix-draft") {
+      setLinkNote(
+        `Share reference ${run?.jobId ?? "unknown"} with support. No file contents or IDs are included.`,
+      );
+      return;
+    }
+    await startOver();
+  };
+
+  const copyReportLink = async () => {
+    if (!reportUrl) return;
+    try {
+      await navigator.clipboard.writeText(reportUrl);
+      setLinkNote("Link copied. Clipboard history may keep a copy — treat it like a password.");
+    } catch {
+      setLinkNote("Copy was blocked by the browser. Use the link below manually.");
+    }
+  };
+
+  const forgetReportLink = () => {
+    setLinkForgotten(true);
+    setLinkNote(
+      "Link forgotten in this popup. This does not revoke browser history or clipboard copies.",
     );
   };
 
@@ -610,8 +806,8 @@ export function WorkflowApp() {
         ? "Unlock Pair Check"
         : gate === "moss-id"
           ? "Connect Moss User ID"
-          : progressPhase
-            ? "Run in progress"
+          : runView && !runView.isTerminal
+            ? runView.title
             : runsLeft < 1
               ? "No runs left"
               : "Ready to compare";
@@ -623,8 +819,8 @@ export function WorkflowApp() {
         ? `$${OFFER.priceUsd} unlocks ${OFFER.runs} runs · max ${OFFER.maxFilesPerRun} files each. Nothing is uploaded at checkout.`
         : gate === "moss-id"
           ? "After purchase, register with Moss yourself and paste only the numeric userid. We never send that email for you."
-          : progressPhase
-            ? note
+          : runView && !runView.isTerminal
+            ? runView.detail
             : runsLeft < 1
               ? "Local demo entitlement is exhausted. Billing API will replace this simulate-purchase path."
               : `${runsLeft} of ${entitlement?.total ?? OFFER.runs} runs left · Pair Check · max ${OFFER.maxFilesPerRun} files`;
@@ -845,6 +1041,129 @@ export function WorkflowApp() {
             </div>
           ) : null}
         </section>
+
+        {gate === "portal" && runView && run ? (
+          <section className="card run-result" aria-labelledby="run-heading">
+            <div className="row section-head">
+              <h2 id="run-heading">{runView.title}</h2>
+              {runView.isDemo ? (
+                <span className="badge badge--info">{runLifecycle.LOCAL_DEMO_LABEL}</span>
+              ) : null}
+            </div>
+            <p className="status" role="status" aria-live="polite">
+              {runView.detail}
+            </p>
+
+            {!runView.isTerminal ? (
+              <>
+                <ol className="run-phases" aria-label="Run phases">
+                  {RUN_STEPS.map((step) => {
+                    const currentIndex = RUN_STEPS.findIndex((item) => item.phase === run.phase);
+                    const stepIndex = RUN_STEPS.indexOf(step);
+                    const state =
+                      stepIndex < currentIndex ? "done" : stepIndex === currentIndex ? "current" : "todo";
+                    return (
+                      <li
+                        key={step.phase}
+                        data-state={state}
+                        {...(state === "current" ? { "aria-current": "step" as const } : {})}
+                      >
+                        {step.label}
+                      </li>
+                    );
+                  })}
+                </ol>
+                <p className="status">
+                  No progress percentage is shown because none is known. If nothing changes by{" "}
+                  {formatClock(run.deadlineAt)}, this run closes itself as unresolved instead of
+                  spinning.
+                </p>
+                <button type="button" className="secondary" onClick={() => void cancelRun()}>
+                  Cancel run
+                </button>
+              </>
+            ) : null}
+
+            {runView.state === "success" && resultView ? (
+              <div className="run-result__ready">
+                {runView.demoNotice ? (
+                  <p className="status status--notice">{runView.demoNotice}</p>
+                ) : null}
+                {resultView.reportUrl ? (
+                  <p className="run-result__link">
+                    <a href={resultView.reportUrl} target="_blank" rel="noreferrer noopener">
+                      Open similarity report ({runView.resultRef})
+                    </a>
+                  </p>
+                ) : (
+                  <p className="status">The link was forgotten in this popup.</p>
+                )}
+                <div className="row wrap">
+                  <button
+                    type="button"
+                    className="secondary"
+                    disabled={resultView.actions["copy"]?.disabled ?? true}
+                    onClick={() => void copyReportLink()}
+                  >
+                    Copy link
+                  </button>
+                  <button
+                    type="button"
+                    className="secondary"
+                    disabled={resultView.actions["forget"]?.disabled ?? true}
+                    onClick={forgetReportLink}
+                  >
+                    Forget link
+                  </button>
+                  <button type="button" className="secondary" onClick={() => void startOver()}>
+                    Start another run
+                  </button>
+                </div>
+                <ul className="run-result__warnings">
+                  {resultView.warnings.map((warning) => (
+                    <li key={warning}>{warning}</li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+
+            {runView.error ? (
+              <div className="run-result__error" role="alert">
+                <h3>{runView.error.copy.title}</h3>
+                <p className="status status--danger">{runView.error.copy.body}</p>
+                {runView.error.terminalExplanation ? (
+                  <p className="status">{runView.error.terminalExplanation}</p>
+                ) : null}
+                <p className="status">
+                  Reference {runView.error.correlationId ?? run.jobId} ·{" "}
+                  {runView.releasesRunCredit
+                    ? "Nothing was submitted, so this run was credited back."
+                    : "This attempt reached submission, so it still counts against your runs."}
+                </p>
+                <div className="row wrap">
+                  {runView.error.actions.map((action) => (
+                    <button
+                      key={action.id}
+                      type="button"
+                      className="secondary"
+                      onClick={() => void onRecoveryAction(action.id)}
+                    >
+                      {action.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            {runView.state === "cancelled" ? (
+              <button type="button" className="secondary" onClick={() => void startOver()}>
+                Start over
+              </button>
+            ) : null}
+
+            {linkNote ? <p className="status">{linkNote}</p> : null}
+          </section>
+        ) : null}
 
         {gate === "portal" ? (
           <>

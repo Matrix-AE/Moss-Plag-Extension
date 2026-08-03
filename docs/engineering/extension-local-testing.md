@@ -36,6 +36,9 @@ Use **Sign in** with those credentials. Create-account also works for other loca
 | Surface | Verify |
 | --- | --- |
 | Popup (~320×580, scroll inside) | Sign in with demo credentials → paywall ($15 / 15 runs / max 2 files, no upload yet) → **Connect Moss User ID** (enter registration email, see exact `registeruser` / `mail …` body, ack, paste numeric ID e.g. `936770554`) → Pair Check portal (language, two file pickers, Advanced options, Account / masked provider ID, preflight, consents, Start Pair Check decrements remaining runs, SETTINGS footer) |
+| Run to result | After **Start Pair Check** the run card walks the named phases (Check files → Upload → Queue → Submit → Wait for report) and finishes within a few seconds with a **Local demo result** link to `report.html`. Nothing auto-opens; use **Copy link** or click the link yourself. |
+| Stuck-run safety | A run that stops making progress closes itself at its deadline (90s) with an error, a reference, and recovery actions. Closing and reopening the popup re-applies the same deadline instead of resuming a spinner. |
+| Local demo report | `report.html` states plainly that no files were uploaded and no provider query ran, so it is not a MOSS similarity report and carries no similarity measurements. |
 | Moss ID step | Extension shows instructions only — it does **not** email Stanford. Portal stays locked until a numeric ID is saved (masked + local vault cipher; never sync). |
 | Settings (embedded options) | Origins and permissions copy (`storage`, `alarms` only) |
 | Themes | Popup forces dark brand tokens; settings still follow OS preference |

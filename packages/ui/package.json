@@ -18,6 +18,7 @@
     "./file-selection": "./file-selection/index.js",
     "./group-builder": "./group-builder/index.js",
     "./progress": "./progress/index.js",
+    "./run-lifecycle": "./run-lifecycle/index.js",
     "./workspace-flow": "./workspace-flow/index.js",
     "./mode-selector": "./mode-selector/index.js",
     "./intake": "./intake/index.js",

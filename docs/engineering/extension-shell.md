@@ -16,6 +16,7 @@
 | --- | --- | --- |
 | Popup | `src/entrypoints/popup` → `popup.html` | Primary product surface: account, paywall, Pair Check workflow |
 | Settings | `src/entrypoints/settings` → `settings.html` | Origins, permissions in use, account notes (embedded options UI) |
+| Local demo report | `src/entrypoints/report` → `report.html` | Destination of the demo result link; states plainly that it is not a MOSS report |
 | Service worker | `src/entrypoints/background.ts` → `background.js` | Message router, storage owner; Side Panel open-on-action stays off |
 
 The toolbar action opens the compact popup (`action.default_popup`). Side Panel is not the
@@ -93,6 +94,21 @@ the popup.
 4. **Portal** — unlocked only after Moss User ID is saved. Pair Check controls (language, two file
    pickers, advanced options, consent, start run). Remaining runs decrement on start (local demo
    entitlement).
+5. **Run** — see below. Every started run reaches a terminal state.
+
+## Run lifecycle (why a run can never hang)
+
+`packages/ui/run-lifecycle` drives the popup run on top of the Prompt 034 progress phase table.
+
+| Rule | Behaviour |
+| --- | --- |
+| Bounded deadline | `RUN_DEADLINE_MS` (90s) is stamped on the run at start. Every tick re-checks the wall clock, so a stalled run becomes `timeout` instead of an endless spinner. |
+| Recovery | Closing the popup stops the ticker. Reopening rebuilds the run from the persisted job with `recoverRunState`; a job with no progress inside the deadline resolves as unresolved rather than resuming a spinner. |
+| Honest progress | Phases are named (`Check files`, `Upload`, `Queue`, `Submit`, `Wait for report`). No percentage is invented. |
+| Terminal states | `success` (result link), `failure` / `timeout` (error copy, correlation reference, recovery actions from `packages/ui/error-recovery`), or `cancelled`. |
+| Uncertain submissions | A timeout after the submit phase resolves to `uncertain-query`: automatic retry is blocked and the customer must resubmit deliberately. |
+| Run accounting | A run is credited back (`releaseDemoRun`) only when the attempt ended with nothing submitted. Releases are keyed by run reference, so a reopened popup cannot refund twice. |
+| Local demo results | Until the hosted relay is live the result link points at `report.html`, labelled as a local demo with no similarity measurements. The link is never auto-opened; storage keeps only an opaque `reportUrlRef`. |
 
 ## Verification
 
@@ -103,5 +119,7 @@ the popup.
   and popup-primary wiring.
 - `tests/prompt-moss-id-onboarding.test.js` covers registration instruction templates, acknowledgement
   gating, numeric ID validation/masking, portal lock until Moss ID connect, and demo login docs.
+- `tests/prompt-popup-run-completion.test.js` covers the run lifecycle: terminal phases, the deadline,
+  recovery after the popup closes, credit release rules, and demo result labelling.
 - Manual load-unpacked in Chrome 120+ confirms the toolbar opens the popup and survives worker
   suspension.
