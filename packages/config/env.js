@@ -124,10 +124,15 @@ function validateExtensionPublicEnv(env) {
   return { ok: true, value: env };
 }
 
+// Assembled at runtime so this file is not itself a match when the scanner runs over tracked sources.
+const CANARY_PREFIX = "CANARY_";
+const CANARY_NAMES = ["SESSION_SECRET_DO_NOT_COMMIT", "PAYMENT_WEBHOOK_SECRET"].map(
+  (suffix) => CANARY_PREFIX + suffix,
+);
+
 function scanForCommittedCanaries(text) {
   const rules = [
-    { name: "CANARY_SESSION_SECRET_DO_NOT_COMMIT", pattern: /CANARY_SESSION_SECRET_DO_NOT_COMMIT/ },
-    { name: "CANARY_PAYMENT_WEBHOOK_SECRET", pattern: /CANARY_PAYMENT_WEBHOOK_SECRET/ },
+    ...CANARY_NAMES.map((name) => ({ name, pattern: new RegExp(name) })),
     { name: "aws-access-key", pattern: /AKIA[0-9A-Z]{16}/ },
     { name: "private-key-header", pattern: /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/ },
   ];

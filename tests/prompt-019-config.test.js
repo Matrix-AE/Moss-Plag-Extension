@@ -88,6 +88,21 @@ test("P019-T06 tracked sources contain no canary secrets", () => {
     }
     const text = fs.readFileSync(absolute, "utf8");
     const hits = config.scanForCommittedCanaries(text);
-    assert.deepEqual(hits, [], relative);
+    assert.deepEqual(hits, [], `${relative}: ${hits.join(", ")}`);
   }
+});
+
+test("P019-T07 canary scanner detects planted secrets without flagging itself", () => {
+  const sessionCanary = "CANARY_" + "SESSION_SECRET_DO_NOT_COMMIT";
+  const paymentCanary = "CANARY_" + "PAYMENT_WEBHOOK_SECRET";
+  assert.deepEqual(config.scanForCommittedCanaries(`SESSION_SECRET=${sessionCanary}`), [
+    sessionCanary,
+  ]);
+  assert.deepEqual(config.scanForCommittedCanaries(`hook=${paymentCanary}`), [paymentCanary]);
+  assert.deepEqual(config.scanForCommittedCanaries("key=AKIA" + "ABCDEFGHIJKLMNOP"), [
+    "aws-access-key",
+  ]);
+  assert.deepEqual(config.scanForCommittedCanaries("nothing sensitive here"), []);
+  const ownSource = fs.readFileSync(path.join(root, "packages/config/env.js"), "utf8");
+  assert.deepEqual(config.scanForCommittedCanaries(ownSource), []);
 });

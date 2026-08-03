@@ -26,11 +26,25 @@ test("P021-T02 CI never configures live Moss credentials", () => {
   assert.match(text, /CI: true/);
 });
 
-test("P021-T03 CI pins setup actions to v4 and enables Corepack npm", () => {
+test("P021-T03 CI pins setup actions to a supported major and enables Corepack npm", () => {
   const text = fs.readFileSync(workflowPath, "utf8");
-  assert.match(text, /actions\/checkout@v4/);
-  assert.match(text, /actions\/setup-node@v4/);
+  assert.match(text, /actions\/checkout@v5/);
+  assert.match(text, /actions\/setup-node@v5/);
   assert.match(text, /corepack prepare npm@10\.9\.2/);
+  // Runner-deprecated Node 20 action majors must not come back.
+  assert.doesNotMatch(text, /actions\/(?:checkout|setup-node)@v4/);
+});
+
+test("P021-T05 every workflow step maps to a documented local gate", () => {
+  const text = fs.readFileSync(workflowPath, "utf8");
+  const doc = fs.readFileSync(path.join(root, "docs/engineering/ci.md"), "utf8");
+  const pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
+  const scripts = [...text.matchAll(/run: npm run ([a-z:]+)/g)].map((match) => match[1]);
+  assert.ok(scripts.length > 0);
+  for (const script of scripts) {
+    assert.ok(pkg.scripts[script], `package.json is missing script ${script}`);
+  }
+  assert.match(doc, /actions\/checkout@v5/);
 });
 
 test("P021-T04 CI docs describe branch protection expectation", () => {
