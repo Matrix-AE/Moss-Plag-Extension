@@ -6,6 +6,7 @@
   "main": "index.js",
   "exports": {
     ".": "./index.js",
-    "./validate": "./validate.js"
+    "./validate": "./validate.js",
+    "./openapi": "./openapi.js"
   }
 }
