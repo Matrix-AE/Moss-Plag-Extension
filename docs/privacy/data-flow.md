@@ -23,7 +23,7 @@ Roles: **Controller** = Matrix-AE for product account/entitlement data. **Proces
 | D-04 | Draft shell metadata | Low/moderate | Mode, language, settings flags, group count, random draft id |
 | D-05 | Group/file metadata | Sensitive | Display labels, filenames, safe virtual paths, byte counts |
 | D-06 | Source code | Highly sensitive | File bytes, archive members |
-| D-07 | Provider credentials | Secret | Managed commercial provider credentials |
+| D-07 | Provider credentials | Secret | Customer BYO numeric Moss userid (ADR-0005B); never email passwords |
 | D-08 | Job metadata | Sensitive usage | Job id, status, language, counts, coarse errors, timestamps, consent version |
 | D-09 | Result link | Bearer secret | Provider-hosted report URL |
 | D-10 | Support records | Personal / sensitive | Ticket text, redacted diagnostics |
@@ -76,7 +76,7 @@ Every path below must remain data-minimized. Source (D-06), credentials (D-07), 
 | Field | Owner | Purpose | Storage | Encryption | Retention | Deletion / user control |
 | --- | --- | --- | --- | --- | --- | --- |
 | D-06 read from storage | Product | Validate & submit | Worker memory / ephemeral disk | Encrypted volume where used | Seconds–minutes | Wipe after attempt |
-| D-07 provider credentials | Product | Authenticate to provider | KMS-backed secret store | Envelope encryption; decrypt only in worker | Rotation per ops policy | Rotate/revoke; never in extension |
+| D-07 provider credentials | Product (customer-supplied under ADR-0005B) | Authenticate to provider | KMS-backed secret store / sealed user secret | Envelope encryption; decrypt only in worker | Rotation/revoke by user delete | User can remove userid; never in extension plaintext logs |
 | Normalized protocol fields | Product | Provider request | Memory | Encrypted egress only | Transient | No durable source retention |
 
 ### P-PROVIDER — Commercial similarity provider

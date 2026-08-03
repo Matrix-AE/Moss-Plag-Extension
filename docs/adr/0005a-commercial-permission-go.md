@@ -6,7 +6,7 @@
 | --- | --- |
 | Delivery prompt | Prompt 005 — Commercial Permission and Account Strategy Gate (re-open) |
 | ADR ID | ADR-0005A |
-| Status | Accepted decision: **go** |
+| Status | Accepted decision: **go** — credential model refined by [`0005b-byo-moss-after-purchase.md`](./0005b-byo-moss-after-purchase.md) |
 | Decision date | 2026-08-03 |
 | Supersedes | [`0005-commercial-permission-and-account-strategy.md`](./0005-commercial-permission-and-account-strategy.md) |
 | Review-by date | 2026-09-17 (confirm endpoint, quota, fee schedule still match written terms) |

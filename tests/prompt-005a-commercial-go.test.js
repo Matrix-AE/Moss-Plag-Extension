@@ -61,11 +61,11 @@ test("P005A-T02 decision is go and supersedes the stop ADR", () => {
   assert.match(go, /Prompt 006\+ of the hosted backlog may proceed/);
 });
 
-test("P005A-T03 managed credentials are selected and pooling remains forbidden", () => {
+test("P005A-T03 managed credentials historically selected; BYO refinement is separate", () => {
   assert.match(go, /Managed commercial credentials \| \*\*Selected\*\*/);
-  assert.match(go, /Customer BYO free\/public Moss userid \| Rejected for MVP/);
   assert.match(go, /Shared\/pooled\/rotated free accounts \| Permanently forbidden/);
   assert.match(go, /Registration automation \| Forbidden/);
+  assert.match(go, /credential model refined by \[`0005b-byo-moss-after-purchase\.md`\]/);
 });
 
 test("P005A-T04 encrypted transport is mandatory and raw TCP is forbidden", () => {
