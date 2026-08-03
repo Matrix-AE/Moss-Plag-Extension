@@ -15,7 +15,8 @@
     "./queues/fair": "./queues/fair.js",
     "./workers/sandboxed": "./workers/sandboxed.js",
     "./retention/source": "./retention/source.js",
-    "./credentials/vault": "./credentials/vault.js"
+    "./credentials/vault": "./credentials/vault.js",
+    "./security/boundaries": "./security/boundaries.js"
   },
   "dependencies": {
     "@moss/domain": "0.0.0",

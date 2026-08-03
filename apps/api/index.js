@@ -8,4 +8,5 @@ module.exports = {
   sandboxedWorkers: require("./workers/sandboxed"),
   sourceRetention: require("./retention/source"),
   credentialVault: require("./credentials/vault"),
+  securityBoundaries: require("./security/boundaries"),
 };
