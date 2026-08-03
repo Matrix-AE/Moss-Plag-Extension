@@ -12,4 +12,5 @@ module.exports = {
   durableStatus: require("./jobs/durable-status"),
   resultMetadata: require("./results/metadata"),
   resultHistory: require("./results/history"),
+  submissionPipelineGate: require("./pipeline/submission-gate"),
 };

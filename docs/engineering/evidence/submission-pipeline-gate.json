@@ -1,0 +1,60 @@
+{
+  "ok": true,
+  "version": 1,
+  "generatedAt": "2026-08-03T12:04:23.998Z",
+  "journeys": [
+    {
+      "ok": true,
+      "jobId": "synth_pair_2ab180",
+      "kind": "pair",
+      "reportUrlRef": "ref_cfb327ebc15ef8c9",
+      "sourceDeleted": true
+    }
+  ],
+  "checks": {
+    "authQuota": {
+      "ok": true
+    },
+    "protocolFailure": {
+      "ok": true
+    },
+    "urlForget": {
+      "ok": true
+    },
+    "historyDelete": {
+      "ok": true
+    },
+    "cleanup": {
+      "ok": true
+    },
+    "idor": {
+      "ok": true
+    }
+  },
+  "audits": {
+    "permission": {
+      "ok": true
+    },
+    "csp": {
+      "ok": true
+    },
+    "redactedLogs": {
+      "ok": true
+    },
+    "accessibility": {
+      "ok": true
+    },
+    "load": {
+      "ok": true,
+      "note": "Synthetic offline load sample"
+    }
+  },
+  "constraints": {
+    "liveAccounts": false,
+    "realCustomerCode": false,
+    "mockServerOnly": true,
+    "syntheticEntitlements": true
+  },
+  "highSeverityDefects": 0,
+  "evidencePath": "docs/engineering/evidence/submission-pipeline-gate.json"
+}
