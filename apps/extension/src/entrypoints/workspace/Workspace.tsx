@@ -119,7 +119,8 @@ export function Workspace() {
         <p>
           Free synthetic/local preview runs through Review. Ordinary <code>File</code> objects do not
           survive restart — reselect files after reopen. Only approved 24-hour draft fields persist.
-          Upload and job creation stay behind entitlement plus consent.
+          Upload and job creation stay behind entitlement plus consent. Information architecture
+          keeps payment on Review → Paywall only.
         </p>
 
         <section className="card" aria-labelledby="recoverable">
