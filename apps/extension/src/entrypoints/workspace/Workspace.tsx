@@ -23,6 +23,10 @@ export function Workspace() {
   const [gateMessage, setGateMessage] = useState(
     "Local preview is free through Review. Upload requires purchase and both consents.",
   );
+  const [comparisonMode, setComparisonMode] = useState<"pair" | "batch">("pair");
+  const [modeHint, setModeHint] = useState(
+    "Pair Check compares exactly two logical submissions before you can continue.",
+  );
 
   const refresh = useCallback(async () => {
     const response = await sendShellMessage("state/get");
@@ -42,6 +46,7 @@ export function Workspace() {
       setStageIndex(5);
     } else if (next?.draft) {
       setNote(`Recovered draft ${next.draft.draftId} (${next.draft.mode}). Reselect files after restart.`);
+      setComparisonMode(next.draft.mode === "batch" ? "batch" : "pair");
       setStageIndex(0);
     } else {
       setNote("No draft or active job on this device.");
@@ -55,13 +60,13 @@ export function Workspace() {
   const seedDemoDraft = useCallback(async () => {
     await sendShellMessage("state/save-draft", {
       draftId: crypto.randomUUID(),
-      mode: "pair",
+      mode: comparisonMode,
       language: "python",
-      groupCount: 2,
+      groupCount: comparisonMode === "pair" ? 2 : 2,
       flags: { includeBaseCode: false },
     });
     await refresh();
-  }, [refresh]);
+  }, [refresh, comparisonMode]);
 
   const discard = useCallback(async () => {
     await sendShellMessage("state/discard-draft");
@@ -98,6 +103,16 @@ export function Workspace() {
     setGateMessage("Job started locally in the progress phase. No fabricated percent is shown.");
   };
 
+  const onModeChange = (next: "pair" | "batch") => {
+    setComparisonMode(next);
+    setModeHint(
+      next === "pair"
+        ? "Pair Check compares exactly two logical submissions before you can continue."
+        : "Batch Check needs at least two logical submissions; folders and approved archives are supported.",
+    );
+    setStageIndex(0);
+  };
+
   return (
     <div className="shell shell--page">
       <header className="row" role="banner">
@@ -122,6 +137,42 @@ export function Workspace() {
           Upload and job creation stay behind entitlement plus consent. Information architecture
           keeps payment on Review → Paywall only.
         </p>
+
+        <section className="card" aria-labelledby="mode-heading">
+          <h2 id="mode-heading">Comparison mode</h2>
+          <fieldset className="mode-selector" role="radiogroup" aria-labelledby="mode-heading">
+            <legend className="type-label">Choose Pair Check or Batch Check</legend>
+            <label className="row" htmlFor="mode-pair">
+              <input
+                type="radio"
+                name="comparison-mode"
+                id="mode-pair"
+                value="pair"
+                checked={comparisonMode === "pair"}
+                onChange={() => onModeChange("pair")}
+              />
+              <span>
+                <strong>Pair Check</strong> — exactly two logical submissions.
+              </span>
+            </label>
+            <label className="row" htmlFor="mode-batch">
+              <input
+                type="radio"
+                name="comparison-mode"
+                id="mode-batch"
+                value="batch"
+                checked={comparisonMode === "batch"}
+                onChange={() => onModeChange("batch")}
+              />
+              <span>
+                <strong>Batch Check</strong> — two or more submissions; folders/archives welcome.
+              </span>
+            </label>
+          </fieldset>
+          <p className="status" role="status">
+            {modeHint}
+          </p>
+        </section>
 
         <section className="card" aria-labelledby="recoverable">
           <h2 id="recoverable">Recoverable state</h2>
