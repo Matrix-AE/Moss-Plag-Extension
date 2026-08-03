@@ -6,4 +6,5 @@ module.exports = {
   uploadSessions: require("./uploads/sessions"),
   transferManager: require("./uploads/transfer-manager"),
   sandboxedWorkers: require("./workers/sandboxed"),
+  sourceRetention: require("./retention/source"),
 };
