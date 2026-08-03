@@ -5,6 +5,8 @@
 **/pnpm-lock.yaml
 **/bun.lockb
 **/dist/
+**/.output/
+**/.wxt/
 *.tsbuildinfo
 node_modules/
 .env

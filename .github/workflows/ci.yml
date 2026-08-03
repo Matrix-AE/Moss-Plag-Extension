@@ -47,6 +47,9 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      - name: Typecheck extension
+        run: npm run typecheck:extension
+
       - name: Test
         run: npm test
         env:
@@ -54,6 +57,9 @@ jobs:
 
       - name: Build
         run: npm run build
+
+      - name: Extension build gates
+        run: npm run check:extension
 
       - name: Dependency policy
         run: npm run check:deps

@@ -2,10 +2,27 @@
   "name": "@moss/extension",
   "version": "0.0.0",
   "private": true,
-  "description": "Chrome MV3 extension workspace (scaffold)",
+  "type": "module",
+  "description": "Chrome MV3 extension shell (WXT + React + TypeScript)",
+  "scripts": {
+    "postinstall": "wxt prepare",
+    "dev": "wxt",
+    "build": "wxt build",
+    "zip": "wxt zip",
+    "typecheck": "wxt prepare && tsc --noEmit",
+    "icons": "node ../../scripts/generate-extension-icons.js"
+  },
   "dependencies": {
+    "@moss/contracts": "0.0.0",
     "@moss/domain": "0.0.0",
     "@moss/ui": "0.0.0",
-    "@moss/contracts": "0.0.0"
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
+    "@wxt-dev/module-react": "^1.2.2",
+    "wxt": "^0.21.3"
   }
 }

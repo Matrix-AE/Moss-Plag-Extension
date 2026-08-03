@@ -128,7 +128,9 @@ test("P022-T05 SBOM covers workspaces and dependencies with licenses", () => {
     assert.ok(component.licenses[0].license.id, `${component.name} has no license id`);
     assert.match(component.purl, /^pkg:npm\//);
   }
-  assert.deepEqual(scanLicenses(sbom), { ok: true, violations: [] });
+  const scan = scanLicenses(sbom);
+  assert.deepEqual(scan.violations, []);
+  assert.equal(scan.ok, true);
 });
 
 test("P022-T06 license policy rejects copyleft and unknown third-party terms", () => {
@@ -138,34 +140,40 @@ test("P022-T06 license policy rejects copyleft and unknown third-party terms", (
   assert.equal(classify("AGPL-3.0"), "denied");
   assert.equal(classify("SSPL-1.0"), "denied");
   assert.equal(classify("Weird-Custom-1.0"), "unknown");
+  // Reciprocal build tooling is tolerable; shipped runtime code is not.
+  assert.equal(classify("MPL-2.0"), "unknown");
+  assert.equal(classify("MPL-2.0", { devOnly: true }), "allowed");
+  assert.equal(classify("GPL-3.0-only", { devOnly: true }), "denied");
 
-  const sbom = {
-    components: [
-      {
-        name: "copyleft-lib",
-        version: "1.0.0",
-        licenses: [{ license: { id: "GPL-3.0-only" } }],
-        properties: [{ name: "moss:origin", value: "registry" }],
-      },
-      {
-        name: "mystery-lib",
-        version: "2.0.0",
-        licenses: [{ license: { id: "UNKNOWN" } }],
-        properties: [{ name: "moss:origin", value: "registry" }],
-      },
-      {
-        name: "@moss/api",
-        version: "0.0.0",
-        licenses: [{ license: { id: "UNLICENSED" } }],
-        properties: [{ name: "moss:origin", value: "workspace" }],
-      },
+  const component = (name, license, extra = {}) => ({
+    name,
+    version: "1.0.0",
+    licenses: [{ license: { id: license } }],
+    properties: [
+      { name: "moss:origin", value: extra.origin || "registry" },
+      { name: "moss:dev", value: String(Boolean(extra.dev)) },
+      { name: "moss:optional", value: String(Boolean(extra.optional)) },
     ],
-  };
-  const result = scanLicenses(sbom);
+  });
+
+  const result = scanLicenses({
+    components: [
+      component("copyleft-lib", "GPL-3.0-only"),
+      component("mystery-lib", "UNKNOWN"),
+      component("runtime-mpl-lib", "MPL-2.0"),
+      component("build-mpl-lib", "MPL-2.0", { dev: true }),
+      component("@moss/api", "UNLICENSED", { origin: "workspace" }),
+      component("platform-binary", "NOT-INSTALLED", { dev: true, optional: true }),
+    ],
+  });
   assert.equal(result.ok, false);
   assert.deepEqual(
-    result.violations.map((violation) => violation.code).sort(),
-    ["denied-license", "unknown-license"],
+    result.violations.map((violation) => violation.name).sort(),
+    ["copyleft-lib", "mystery-lib", "runtime-mpl-lib"],
+  );
+  assert.deepEqual(
+    result.unresolved.map((entry) => entry.name),
+    ["platform-binary"],
   );
 });
 

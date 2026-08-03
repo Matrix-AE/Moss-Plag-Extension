@@ -38,7 +38,8 @@ publishes an extension build. Each train carries its own semantic version.
 | Major upgrades | Never auto-merged; separate PR with human review |
 | Dependency review | `npm run check:deps` — registry allowlist, integrity hashes, lockfile version, advisory blocklist |
 | Advisory blocklist | `release/advisories.json` |
-| License scan | `scripts/release/licenses.js` — permissive allowlist, copyleft/source-available denied |
+| License scan | `scripts/release/licenses.js` — permissive allowlist for shipped code; file-level reciprocal terms (MPL-2.0, EPL-2.0, CDDL-1.0) allowed for dev-only build tooling; GPL/AGPL/LGPL/SSPL/BUSL denied everywhere |
+| Platform binaries | Optional per-OS packages that the current platform does not install are reported as `unresolved` and enforced on the platform that installs them |
 | SBOM | `scripts/release/sbom.js` emits CycloneDX 1.5 `sbom.cdx.json` |
 
 ## Provenance

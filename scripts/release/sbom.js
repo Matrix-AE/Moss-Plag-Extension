@@ -18,9 +18,11 @@ function readManifest(file) {
   }
 }
 
-function licenseOf(manifest) {
+function licenseOf(manifest, { optional = false } = {}) {
   if (!manifest) {
-    return "UNKNOWN";
+    // Platform-specific optional binaries are absent on the current OS; their terms are checked on
+    // the platform that actually installs them.
+    return optional ? "NOT-INSTALLED" : "UNKNOWN";
   }
   if (typeof manifest.license === "string" && manifest.license.trim()) {
     return manifest.license.trim();
@@ -50,6 +52,8 @@ function buildSbom({ root, timestamp = new Date().toISOString(), commit = "unkno
     const properties = [
       { name: "moss:origin", value: isWorkspace ? "workspace" : "registry" },
       { name: "moss:path", value: key },
+      { name: "moss:dev", value: String(Boolean(entry.dev)) },
+      { name: "moss:optional", value: String(Boolean(entry.optional)) },
     ];
     if (entry.integrity) {
       properties.push({ name: "moss:integrity", value: entry.integrity });
@@ -59,9 +63,9 @@ function buildSbom({ root, timestamp = new Date().toISOString(), commit = "unkno
       "bom-ref": `${name}@${version}`,
       name,
       version,
-      scope: entry.dev ? "optional" : "required",
+      scope: entry.optional ? "optional" : "required",
       purl: `pkg:npm/${name}@${version}`,
-      licenses: [{ license: { id: licenseOf(manifest) } }],
+      licenses: [{ license: { id: licenseOf(manifest, { optional: Boolean(entry.optional) }) } }],
       properties,
     });
   }
