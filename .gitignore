@@ -1,0 +1,6 @@
+# Ignore all lockfiles except the root npm lockfile.
+**/package-lock.json
+!/package-lock.json
+**/yarn.lock
+**/pnpm-lock.yaml
+**/bun.lockb
