@@ -21,12 +21,23 @@ export function Settings() {
         <h2 id="permissions">Permissions in use</h2>
         <ol>
           <li>
-            <strong>storage</strong>: keeps drafts and active job references on this device only.
+            <strong>storage</strong>: keeps drafts and active job references on this device only
+            (<code>storage.local</code>, never sync).
           </li>
           <li>
-            <strong>alarms</strong>: re-checks job status after the service worker is suspended.
+            <strong>alarms</strong>: re-checks purge and job status after the service worker is
+            suspended.
           </li>
         </ol>
+      </section>
+
+      <section className="card" aria-labelledby="persistence">
+        <h2 id="persistence">What is persisted</h2>
+        <p>
+          Draft shells keep mode, language, group count, and a random id for at most 24 hours. Active
+          jobs keep an opaque id and status; terminal jobs purge within 24 hours. Titles, labels,
+          names, paths, hashes, source, and <code>File</code> objects are never written.
+        </p>
       </section>
 
       <section className="card" aria-labelledby="account">

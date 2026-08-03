@@ -1,38 +1,26 @@
 import { defineBackground } from "wxt/utils/define-background";
 import { browser } from "wxt/browser";
 
-import { isShellMessage, type ShellResponse } from "../shared/messages";
+import { createExtensionRouter, createExtensionStateStore } from "../shared/messages";
 
-const WORKSPACE_PAGE = "workspace.html";
-
-// The service worker is suspended aggressively, so it keeps no in-memory session state.
-// Anything that must survive suspension goes to storage.local (Prompt 024).
+// Distrust worker memory: every request reloads from storage.local via the state store.
+// The router is created once, but the store never treats in-worker scratch as authoritative.
 export default defineBackground(() => {
+  const store = createExtensionStateStore();
+  const handleMessage = createExtensionRouter(store);
+
   browser.runtime.onInstalled.addListener(async () => {
-    await browser.storage.local.set({ shellInstalledAt: Date.now() });
+    // Seed / migrate schema on install and upgrade. load() writes empty state if needed.
+    await store.load();
   });
 
-  browser.runtime.onMessage.addListener((message: unknown): Promise<ShellResponse> => {
-    if (!isShellMessage(message)) {
-      return Promise.resolve({ ok: false, error: "malformed-message" });
-    }
-
-    switch (message.action) {
-      case "shell/ping":
-        return Promise.resolve({ ok: true, action: message.action, requestId: message.requestId });
-      case "shell/open-workspace":
-        return browser.tabs
-          .create({ url: browser.runtime.getURL(`/${WORKSPACE_PAGE}`) })
-          .then(() => ({ ok: true, action: message.action, requestId: message.requestId }));
-      case "shell/status":
-        return browser.storage.local.get("shellInstalledAt").then((stored) => ({
-          ok: true,
-          action: message.action,
-          requestId: message.requestId,
-          payload: { installedAt: Number(stored["shellInstalledAt"] ?? 0) },
-        }));
-      default:
-        return Promise.resolve({ ok: false, error: "unknown-action" });
+  // Alarms re-check purge after suspension instead of holding timers in memory.
+  browser.alarms.create("state-purge", { periodInMinutes: 60 });
+  browser.alarms.onAlarm.addListener((alarm) => {
+    if (alarm.name === "state-purge") {
+      void store.forcePurge();
     }
   });
+
+  browser.runtime.onMessage.addListener((message: unknown) => handleMessage(message));
 });

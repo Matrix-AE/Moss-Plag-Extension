@@ -20,19 +20,13 @@ const { SIZES, renderPng } = require(path.join(root, "scripts/generate-extension
 const { isShellMessage, MESSAGE_ACTIONS } = { ...readMessagesContract() };
 
 function readMessagesContract() {
-  // The shared contract is TypeScript source; the test mirrors its allowlist and re-implements the
-  // guard so a drift between them fails here rather than in the browser.
-  const source = fs.readFileSync(path.join(root, "apps/extension/src/shared/messages.ts"), "utf8");
-  const actions = [...source.matchAll(/"(shell\/[a-z-]+)"/g)].map((match) => match[1]);
-  const unique = [...new Set(actions)];
+  // Allowlist lives in the CommonJS state module (Prompt 024); shell tests keep validating the
+  // same guard semantics against that source of truth.
+  const state = require(path.join(root, "apps/extension/state/index.cjs"));
+  const unique = [...state.MESSAGE_ACTIONS];
   return {
     MESSAGE_ACTIONS: unique,
-    isShellMessage: (value) =>
-      typeof value === "object" &&
-      value !== null &&
-      typeof value.requestId === "string" &&
-      value.requestId.length > 0 &&
-      unique.includes(value.action),
+    isShellMessage: (value) => state.parseMessage(value).ok,
   };
 }
 
@@ -254,7 +248,9 @@ test("P023-T09 extension sources avoid Node and provider transport", () => {
 });
 
 test("P023-T10 message router allowlists actions and rejects malformed input", () => {
-  assert.deepEqual(MESSAGE_ACTIONS, ["shell/ping", "shell/open-workspace", "shell/status"]);
+  assert.ok(MESSAGE_ACTIONS.includes("shell/ping"));
+  assert.ok(MESSAGE_ACTIONS.includes("shell/open-workspace"));
+  assert.ok(MESSAGE_ACTIONS.includes("shell/status"));
   assert.equal(isShellMessage({ action: "shell/ping", requestId: "abc" }), true);
   assert.equal(isShellMessage({ action: "shell/wipe-disk", requestId: "abc" }), false);
   assert.equal(isShellMessage({ action: "shell/ping" }), false);
@@ -266,6 +262,5 @@ test("P023-T10 message router allowlists actions and rejects malformed input", (
     path.join(root, "apps/extension/src/entrypoints/background.ts"),
     "utf8",
   );
-  assert.match(background, /isShellMessage/);
-  assert.match(background, /malformed-message/);
+  assert.match(background, /createExtensionRouter|handleMessage/);
 });

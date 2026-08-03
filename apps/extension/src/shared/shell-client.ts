@@ -1,16 +1,21 @@
-import { browser } from "wxt/browser";
+import {
+  sendShellMessage,
+  newRequestId,
+  getPersistedState,
+  createExtensionRouter,
+  createExtensionStateStore,
+  type ShellMessage,
+  type ShellResponse,
+} from "./messages";
+import type { MessageAction } from "./state-types";
 
-import type { MessageAction, ShellResponse } from "./messages";
-
-export function newRequestId(): string {
-  return crypto.randomUUID();
-}
-
-export async function sendShellMessage(action: MessageAction): Promise<ShellResponse> {
-  try {
-    return (await browser.runtime.sendMessage({ action, requestId: newRequestId() })) as ShellResponse;
-  } catch {
-    // A suspended worker restarts on demand; a failed round trip is recoverable, not fatal.
-    return { ok: false, error: "malformed-message" };
-  }
-}
+export {
+  sendShellMessage,
+  newRequestId,
+  getPersistedState,
+  createExtensionRouter,
+  createExtensionStateStore,
+  type ShellMessage,
+  type ShellResponse,
+  type MessageAction,
+};

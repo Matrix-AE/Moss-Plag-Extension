@@ -20,8 +20,8 @@
 | Service worker | `src/entrypoints/background.ts` → `background.js` | Message router and storage owner |
 
 The popup can close at any time and the service worker is suspended aggressively, so neither holds
-session state in memory. Anything durable goes to `storage.local` (full ownership rules land in
-Prompt 024).
+session state in memory. Anything durable goes to `storage.local` — see
+`docs/engineering/extension-state.md` (Prompt 024) for ownership, TTL, and message allowlists.
 
 ## Permissions
 

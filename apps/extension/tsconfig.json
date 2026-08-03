@@ -11,5 +11,5 @@
     "skipLibCheck": true,
     "noEmit": true
   },
-  "include": ["src", "wxt.config.ts", ".wxt/**/*"]
+  "include": ["src", "wxt.config.ts", ".wxt/**/*", "state/**/*.d.ts"]
 }
