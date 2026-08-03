@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>IA walkthrough — Prompt 025</title>
+    <style>
+      :root {
+        --bg: #eef2f8;
+        --ink: #14161a;
+        --muted: #5a6069;
+        --line: #d8dbe0;
+        --accent: #2f5bea;
+        --accent-ink: #fff;
+        --warn: #8a4b00;
+        --frame: #fff;
+        font-family: "Segoe UI", system-ui, sans-serif;
+      }
+      body {
+        margin: 0;
+        background: radial-gradient(circle at top left, #d9e4ff, transparent 40%), var(--bg);
+        color: var(--ink);
+      }
+      header {
+        padding: 20px 24px 8px;
+      }
+      h1 {
+        margin: 0 0 6px;
+        font-size: 22px;
+      }
+      .row {
+        display: flex;
+        gap: 16px;
+        flex-wrap: wrap;
+        padding: 8px 24px 24px;
+      }
+      .panel {
+        background: var(--frame);
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 14px;
+        min-width: 260px;
+        flex: 1;
+      }
+      label {
+        display: block;
+        font-size: 12px;
+        color: var(--muted);
+        margin-bottom: 4px;
+      }
+      select,
+      button,
+      input {
+        font: inherit;
+      }
+      select {
+        width: 100%;
+        padding: 8px;
+        margin-bottom: 10px;
+      }
+      button {
+        border-radius: 8px;
+        border: 1px solid transparent;
+        padding: 8px 12px;
+        background: var(--accent);
+        color: var(--accent-ink);
+        cursor: pointer;
+        margin: 4px 4px 0 0;
+      }
+      button.secondary {
+        background: transparent;
+        border-color: var(--line);
+        color: var(--ink);
+      }
+      button:disabled {
+        opacity: 0.45;
+        cursor: not-allowed;
+      }
+      .meta {
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.45;
+      }
+      .viewport {
+        margin: 0 24px 32px;
+      }
+      .frame {
+        background: var(--frame);
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        box-shadow: 0 10px 30px rgba(20, 22, 26, 0.08);
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+        max-width: 100%;
+      }
+      .frame .bar {
+        padding: 10px 12px;
+        border-bottom: 1px solid var(--line);
+        font-size: 13px;
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+      }
+      .frame .body {
+        padding: 12px;
+        flex: 1;
+        overflow: auto;
+      }
+      .frame footer {
+        border-top: 1px solid var(--line);
+        padding: 10px 12px;
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
+        background: var(--frame);
+      }
+      .badge {
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        padding: 2px 8px;
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .rail {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-bottom: 10px;
+        font-size: 11px;
+        color: var(--muted);
+      }
+      .rail span[aria-current="step"] {
+        color: var(--ink);
+        font-weight: 600;
+      }
+      .card {
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 10px;
+        background: #f4f5f7;
+        margin: 8px 0;
+      }
+      .warn {
+        color: var(--warn);
+        font-size: 13px;
+      }
+      .checklist {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+        max-height: 280px;
+        overflow: auto;
+      }
+      .checklist li {
+        display: flex;
+        gap: 8px;
+        align-items: flex-start;
+        margin: 6px 0;
+        font-size: 13px;
+      }
+      .consent {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        margin: 10px 0;
+        font-size: 13px;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Extension IA walkthrough</h1>
+      <p class="meta">
+        Prompt 025 facilitator at popup 320×520 and workspace 880×720. Payment only after Review
+        consent. No provider traffic.
+      </p>
+    </header>
+
+    <div class="row">
+      <div class="panel">
+        <label for="scenario">Scenario</label>
+        <select id="scenario"></select>
+        <button type="button" id="grant">Grant both consents</button>
+        <button type="button" class="secondary" id="to-pay">Continue to payment</button>
+        <button type="button" class="secondary" id="early-pay">Try paywall early</button>
+        <p class="meta" id="status" role="status"></p>
+      </div>
+      <div class="panel">
+        <strong>Walk checklist</strong>
+        <ul class="checklist" id="checklist"></ul>
+      </div>
+    </div>
+
+    <div class="viewport">
+      <div class="frame" id="frame" aria-live="polite">
+        <div class="bar">
+          <span id="frame-title">Frame</span>
+          <span class="badge" id="frame-size"></span>
+        </div>
+        <div class="body" id="frame-body"></div>
+        <footer>
+          <button type="button" class="secondary" id="secondary-btn">Back</button>
+          <button type="button" id="primary-btn">Primary</button>
+        </footer>
+      </div>
+    </div>
+
+    <script src="./ia-model.js"></script>
+    <script src="./ia-browser.js"></script>
+  </body>
+</html>

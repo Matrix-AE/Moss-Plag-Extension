@@ -56,9 +56,26 @@ export function Workspace() {
         <span className="badge">Shell + state</span>
       </header>
 
+      <nav className="rail" aria-label="Workspace steps">
+        {[
+          "Select",
+          "Group",
+          "Configure",
+          "Review",
+          "Paywall",
+          "Progress",
+          "Result",
+        ].map((step, index) => (
+          <span key={step} aria-current={index === 0 ? "step" : undefined}>
+            {step}
+          </span>
+        ))}
+      </nav>
+
       <p>
         File selection and grouping land next. This surface already recovers drafts and active opaque
         job ids from <code>storage.local</code> after the popup closes or the service worker suspends.
+        Information architecture (Prompt 025) keeps payment on Review → Paywall only.
       </p>
 
       <section className="card" aria-labelledby="recoverable">
