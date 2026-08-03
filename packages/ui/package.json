@@ -17,7 +17,8 @@
     "./shell": "./shell/index.js",
     "./file-selection": "./file-selection/index.js",
     "./group-builder": "./group-builder/index.js",
-    "./progress": "./progress/index.js"
+    "./progress": "./progress/index.js",
+    "./workspace-flow": "./workspace-flow/index.js"
   },
   "scripts": {
     "emit:tokens": "node ../../scripts/emit-ui-tokens.js",
