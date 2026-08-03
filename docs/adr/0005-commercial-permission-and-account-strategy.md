@@ -6,12 +6,12 @@
 | --- | --- |
 | Delivery prompt | Prompt 005 — Commercial Permission and Account Strategy Gate |
 | ADR ID | ADR-0005 |
-| Status | Accepted decision: **stop** |
+| Status | **Superseded** by [`0005a-commercial-permission-go.md`](./0005a-commercial-permission-go.md) |
 | Decision date | 2026-08-03 |
 | Review-by date | 2026-09-03 or upon receipt of written commercial terms, whichever is earlier |
 | Evidence inputs | [`../compliance/moss-service-research.md`](../compliance/moss-service-research.md), [`../product/mvp-prd.md`](../product/mvp-prd.md), [`../product/product-charter.md`](../product/product-charter.md), [`../product/research/prompt-003-market-scan.md`](../product/research/prompt-003-market-scan.md) |
 | Supersedes | None |
-| Soft-gate note | Prompt 006+ hosted-MOSS backlog execution is halted by this decision |
+| Soft-gate note | Historical stop. Hosted-MOSS backlog may resume only under ADR-0005A. |
 
 ## Context
 
