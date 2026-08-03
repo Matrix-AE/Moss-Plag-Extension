@@ -14,6 +14,8 @@ const requiredWorkspaces = [
   "apps/worker-cleanup",
   "packages/domain",
   "packages/contracts",
+  "packages/config",
+  "packages/testing",
   "packages/ui",
   "packages/provider-adapter",
 ];

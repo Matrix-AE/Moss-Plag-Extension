@@ -37,6 +37,7 @@ test("P016-T04 solution tsconfig references packages", () => {
   const solution = JSON.parse(fs.readFileSync(path.join(root, "tsconfig.json"), "utf8"));
   const paths = solution.references.map((item) => item.path).sort();
   assert.deepEqual(paths, [
+    "./packages/config",
     "./packages/contracts",
     "./packages/domain",
     "./packages/provider-adapter",

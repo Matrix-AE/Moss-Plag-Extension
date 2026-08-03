@@ -1,0 +1,11 @@
+{
+  "name": "@moss/config",
+  "version": "0.0.0",
+  "private": true,
+  "type": "commonjs",
+  "main": "env.js",
+  "exports": {
+    ".": "./env.js",
+    "./env": "./env.js"
+  }
+}

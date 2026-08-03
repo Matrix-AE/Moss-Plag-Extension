@@ -7,3 +7,9 @@
 **/dist/
 *.tsbuildinfo
 node_modules/
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
