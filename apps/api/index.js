@@ -18,4 +18,7 @@ module.exports = {
   customerOffer: require("./commerce/customer-offer"),
   paymentArchitecture: require("./commerce/payment-architecture"),
   providerOnboarding: require("./provider/onboarding"),
+  legalTerms: require("./legal/terms"),
+  legalPrivacy: require("./legal/privacy"),
+  consentCopy: require("./legal/consent-copy"),
 };

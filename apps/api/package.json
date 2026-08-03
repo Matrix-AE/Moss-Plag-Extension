@@ -25,7 +25,10 @@
     "./commerce/provider-capacity": "./commerce/provider-capacity.js",
     "./commerce/customer-offer": "./commerce/customer-offer.js",
     "./commerce/payment-architecture": "./commerce/payment-architecture.js",
-    "./provider/onboarding": "./provider/onboarding.js"
+    "./provider/onboarding": "./provider/onboarding.js",
+    "./legal/terms": "./legal/terms.js",
+    "./legal/privacy": "./legal/privacy.js",
+    "./legal/consent-copy": "./legal/consent-copy.js"
   },
   "dependencies": {
     "@moss/domain": "0.0.0",
