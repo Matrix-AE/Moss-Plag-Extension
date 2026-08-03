@@ -10,4 +10,5 @@ module.exports = {
   credentialVault: require("./credentials/vault"),
   securityBoundaries: require("./security/boundaries"),
   durableStatus: require("./jobs/durable-status"),
+  resultMetadata: require("./results/metadata"),
 };

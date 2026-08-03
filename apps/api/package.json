@@ -17,7 +17,8 @@
     "./retention/source": "./retention/source.js",
     "./credentials/vault": "./credentials/vault.js",
     "./security/boundaries": "./security/boundaries.js",
-    "./jobs/durable-status": "./jobs/durable-status.js"
+    "./jobs/durable-status": "./jobs/durable-status.js",
+    "./results/metadata": "./results/metadata.js"
   },
   "dependencies": {
     "@moss/domain": "0.0.0",
