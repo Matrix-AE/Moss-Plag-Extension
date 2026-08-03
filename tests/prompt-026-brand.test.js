@@ -178,7 +178,7 @@ test("P026-T14 approved palette ships through @moss/ui tokens used by the extens
 
   // Extension component CSS consumes variables only — no hex literals.
   assert.equal((baseCss.match(/#[0-9a-f]{3,8}\b/gi) || []).length, 0);
-  for (const entry of ["popup", "workspace", "settings"]) {
+  for (const entry of ["sidepanel", "workspace", "settings"]) {
     const main = fs.readFileSync(
       path.join(root, `apps/extension/src/entrypoints/${entry}/main.tsx`),
       "utf8",

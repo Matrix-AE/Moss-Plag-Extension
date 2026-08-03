@@ -65,7 +65,7 @@ test("P040-T04 search UI and workspace wiring", () => {
   const pkg = JSON.parse(fs.readFileSync(path.join(root, "packages/ui/package.json"), "utf8"));
   assert.equal(pkg.exports["./language"], "./language/index.js");
   const workspace = fs.readFileSync(
-    path.join(root, "apps/extension/src/entrypoints/workspace/Workspace.tsx"),
+    path.join(root, "apps/extension/src/shared/workflow/WorkflowApp.tsx"),
     "utf8",
   );
   assert.match(workspace, /language|Language/);

@@ -14,14 +14,15 @@
 
 | Surface | Entry point | Purpose |
 | --- | --- | --- |
-| Popup | `src/entrypoints/popup` → `popup.html` | Fast status glance, open workspace, reach settings |
-| Workspace | `src/entrypoints/workspace` → `workspace.html` | Full page for selection, grouping, progress, results |
-| Settings | `src/entrypoints/settings` → `settings.html` | Origins, permissions in use, account connection |
-| Service worker | `src/entrypoints/background.ts` → `background.js` | Message router and storage owner |
+| Side Panel | `src/entrypoints/sidepanel` → `sidepanel.html` | Complete comparison workflow beside the browser |
+| Settings | `src/entrypoints/settings` → `settings.html` | Origins, permissions in use, account notes (embedded options UI) |
+| Service worker | `src/entrypoints/background.ts` → `background.js` | Message router, storage owner, Side Panel open-on-action behavior |
 
-The popup can close at any time and the service worker is suspended aggressively, so neither holds
-session state in memory. Anything durable goes to `storage.local` — see
-`docs/engineering/extension-state.md` (Prompt 024) for ownership, TTL, and message allowlists.
+The toolbar action opens the Side Panel directly (`sidePanel.setPanelBehavior({ openPanelOnActionClick: true })`).
+There is no popup and the shell never opens `workspace.html` in a new tab. The service worker is
+suspended aggressively, so it never holds session state in memory. Anything durable goes to
+`storage.local` — see `docs/engineering/extension-state.md` (Prompt 024) for ownership, TTL, and
+message allowlists.
 
 ## Permissions
 
@@ -30,11 +31,13 @@ build when the manifest and this table disagree in either direction.
 
 | Permission | Feature that needs it |
 | --- | --- |
-| `storage` | Persists drafts and active job references on the device so a closed popup or suspended worker can recover |
+| `storage` | Persists drafts and active job references on the device so a closed panel or suspended worker can recover |
 | `alarms` | Re-checks job status after the service worker is suspended, instead of holding a timer in memory |
+| `sidePanel` | Hosts the complete Code Similarity workflow in Chrome’s Side Panel and opens it from the toolbar action |
 
 No optional permissions ship. No `tabs`, `scripting`, `downloads`, or broad host access is requested;
-the shell opens its own pages with `runtime.getURL` and never injects into third-party pages.
+the shell opens its own pages with `runtime.getURL` / Side Panel APIs and never injects into
+third-party pages.
 
 ## Origins
 
@@ -71,14 +74,18 @@ minification on, targeting Chrome 120.
 
 ## Service worker suspension
 
-The worker registers `runtime.onInstalled` and a single `runtime.onMessage` router. Messages are
-validated against an action allowlist (`src/shared/messages.ts`); unknown or malformed messages get
-`{ ok: false, error }` instead of throwing. UI surfaces treat a failed round trip as recoverable and
-offer a retry, because the first message after suspension restarts the worker.
+The worker registers `runtime.onInstalled`, configures Side Panel open-on-action behavior, and a
+single `runtime.onMessage` router. Messages are validated against an action allowlist
+(`src/shared/messages.ts`); unknown or malformed messages get `{ ok: false, error }` instead of
+throwing. UI surfaces treat a failed round trip as recoverable and offer a retry, because the first
+message after suspension restarts the worker.
 
 ## Verification
 
 - `npm run check:extension` runs the automated manifest/CSP/permission/source-map/forbidden-import gates.
 - `tests/prompt-023-extension-shell.test.js` builds the extension and asserts each gate, including
   negative cases for undocumented permissions, weak CSP, and shipped source maps.
-- Manual load-unpacked in Chrome 120+ confirms each surface opens and survives worker suspension.
+- `tests/prompt-sidepanel-workflow.test.js` covers capability languages, advanced controls, and the
+  Side Panel migration.
+- Manual load-unpacked in Chrome 120+ confirms the toolbar opens the Side Panel and survives worker
+  suspension.

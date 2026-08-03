@@ -60,11 +60,18 @@ export function createExtensionStateStore() {
   return createStateStore(createChromeLocalStorage());
 }
 
-export function createExtensionRouter(store = createExtensionStateStore()) {
+export function createExtensionRouter(
+  store = createExtensionStateStore(),
+  options: { openWorkspace?: () => Promise<void> } = {},
+) {
   return createRouter({
     store,
     openWorkspace: async () => {
-      await browser.tabs.create({ url: browser.runtime.getURL("/workspace.html") });
+      if (options.openWorkspace) {
+        await options.openWorkspace();
+        return;
+      }
+      // Default: Side Panel is opened by toolbar action — do not create workspace tabs.
     },
   });
 }

@@ -56,7 +56,7 @@ test("P045-T03 html focus order markers and wiring", () => {
   const pkg = JSON.parse(fs.readFileSync(path.join(root, "packages/ui/package.json"), "utf8"));
   assert.equal(pkg.exports["./review"], "./review/index.js");
   const workspace = fs.readFileSync(
-    path.join(root, "apps/extension/src/entrypoints/workspace/Workspace.tsx"),
+    path.join(root, "apps/extension/src/shared/workflow/WorkflowApp.tsx"),
     "utf8",
   );
   assert.match(workspace, /Review consents|Confirm and continue|consent/i);

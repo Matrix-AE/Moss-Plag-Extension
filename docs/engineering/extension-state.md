@@ -64,7 +64,7 @@ source, File/file/files, displayName, filename(s), reportUrl, content, bytesCont
 | Action | Payload | Effect |
 | --- | --- | --- |
 | `shell/ping` | — | Liveness |
-| `shell/open-workspace` | — | Open workspace tab |
+| `shell/open-workspace` | — | Focus Side Panel recovery hook (does not open a workspace tab) |
 | `shell/status` | — | Coarse installed/draft/job flags |
 | `state/get` | — | Load + migrate + purge, return state |
 | `state/save-draft` | draft shell | Validate and persist |

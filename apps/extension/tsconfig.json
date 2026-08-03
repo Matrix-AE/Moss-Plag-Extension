@@ -9,7 +9,17 @@
     "forceConsistentCasingInFileNames": true,
     "jsx": "react-jsx",
     "skipLibCheck": true,
-    "noEmit": true
+    "noEmit": true,
+    "paths": {
+      "@moss/ui/language": ["./src/shims/ui-language.d.ts"],
+      "@moss/ui/settings": ["./src/shims/ui-settings.d.ts"],
+      "@moss/ui/intake": ["./src/shims/ui-intake.d.ts"],
+      "@moss/ui/grouping": ["./src/shims/ui-grouping.d.ts"],
+      "@moss/ui/mode-selector": ["./src/shims/ui-mode-selector.d.ts"],
+      "@moss/ui/review": ["./src/shims/ui-review.d.ts"],
+      "@moss/ui/preflight": ["./src/shims/ui-preflight.d.ts"],
+      "@moss/ui/base-code": ["./src/shims/ui-base-code.d.ts"]
+    }
   },
   "include": ["src", "wxt.config.ts", ".wxt/**/*", "state/**/*.d.ts"]
 }

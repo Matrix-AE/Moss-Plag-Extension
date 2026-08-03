@@ -3,7 +3,7 @@
 const fs = require("node:fs");
 const path = require("node:path");
 
-const REQUIRED_PAGES = ["popup.html", "workspace.html", "settings.html"];
+const REQUIRED_PAGES = ["sidepanel.html", "settings.html"];
 const ALLOWED_HOSTS = ["https://api.mossworkflow.dev/", "https://uploads.mossworkflow.dev/"];
 const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 

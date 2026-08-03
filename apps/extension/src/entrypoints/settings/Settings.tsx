@@ -5,7 +5,7 @@ export function Settings() {
     <main className="shell shell--page">
       <header className="row">
         <h1>Settings</h1>
-        <span className="badge">Shell preview</span>
+        <span className="badge">Side Panel account</span>
       </header>
 
       <section className="card" aria-labelledby="connections">
@@ -28,6 +28,9 @@ export function Settings() {
             <strong>alarms</strong>: re-checks purge and job status after the service worker is
             suspended.
           </li>
+          <li>
+            <strong>sidePanel</strong>: hosts the complete comparison workflow beside the browser.
+          </li>
         </ol>
       </section>
 
@@ -36,15 +39,16 @@ export function Settings() {
         <p>
           Draft shells keep mode, language, group count, and a random id for at most 24 hours. Active
           jobs keep an opaque id and status; terminal jobs purge within 24 hours. Titles, labels,
-          names, paths, hashes, source, and <code>File</code> objects are never written.
+          names, paths, hashes, source, and <code>File</code> objects are never written. Provider IDs
+          stay masked in memory for vault wiring and are never synced.
         </p>
       </section>
 
       <section className="card" aria-labelledby="account">
         <h2 id="account">Similarity account</h2>
         <p>
-          After purchase you connect your own provider account (ADR-0005B). Nothing is stored here
-          yet; the connection form ships with the account flow.
+          After purchase, connect your own numeric provider account from the Side Panel Account
+          section (ADR-0005B). The ID is never used as extension authentication.
         </p>
       </section>
     </main>

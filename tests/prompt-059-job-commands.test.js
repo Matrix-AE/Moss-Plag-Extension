@@ -23,6 +23,6 @@ test("P059-T03 docs wiring", () => {
   assert.match(doc, /free-form/i);
   const pkg = JSON.parse(fs.readFileSync(path.join(root, "packages/provider-adapter/package.json"), "utf8"));
   assert.equal(pkg.exports["./job-commands"], "./job-commands.js");
-  const workspace = fs.readFileSync(path.join(root, "apps/extension/src/entrypoints/workspace/Workspace.tsx"), "utf8");
+  const workspace = fs.readFileSync(path.join(root, "apps/extension/src/shared/workflow/WorkflowApp.tsx"), "utf8");
   assert.match(workspace, /mock loopback adapter|never opens raw provider TCP/i);
 });

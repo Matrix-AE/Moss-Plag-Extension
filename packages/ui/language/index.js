@@ -5,6 +5,13 @@
  * Languages come from server capabilities — never silent guesses.
  */
 
+const {
+  MOSS_LANGUAGE_FIXTURE,
+  MOSS_LANGUAGE_ALIASES,
+  MOSS_LANGUAGE_CODES,
+  createMossCapabilitiesFixture,
+} = require("./capabilities-fixture");
+
 const LANGUAGE_VERSION = 1;
 
 /** Fallback empty until capabilities arrive — UI must not invent a private catalog. */
@@ -216,6 +223,42 @@ function validateLanguageModule() {
   // Never auto-confirm a guess
   if (known.requiresConfirmation !== true) errors.push("must-confirm");
 
+  const fixture = normalizeCapabilities(createMossCapabilitiesFixture());
+  if (!fixture.ok) errors.push("moss-fixture");
+  if (fixture.capabilities.languages.length !== MOSS_LANGUAGE_CODES.length) {
+    errors.push("moss-count");
+  }
+  for (const code of [
+    "c",
+    "cc",
+    "java",
+    "ml",
+    "pascal",
+    "ada",
+    "lisp",
+    "scheme",
+    "haskell",
+    "fortran",
+    "ascii",
+    "vhdl",
+    "perl",
+    "matlab",
+    "python",
+    "mips",
+    "prolog",
+    "spice",
+    "vb",
+    "csharp",
+    "modula2",
+    "a8086",
+    "javascript",
+    "plsql",
+  ]) {
+    if (!fixture.capabilities.languages.some((lang) => lang.code === code)) {
+      errors.push(`missing-${code}`);
+    }
+  }
+
   return { ok: errors.length === 0, errors };
 }
 
@@ -230,6 +273,10 @@ function escape(value) {
 module.exports = {
   LANGUAGE_VERSION,
   EMPTY_CAPABILITIES,
+  MOSS_LANGUAGE_FIXTURE,
+  MOSS_LANGUAGE_ALIASES,
+  MOSS_LANGUAGE_CODES,
+  createMossCapabilitiesFixture,
   normalizeCapabilities,
   isStale,
   suggestLanguage,

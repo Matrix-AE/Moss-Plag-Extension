@@ -9,7 +9,7 @@ const root = path.resolve(__dirname, "..");
 const flow = require(path.join(root, "packages/ui/workspace-flow"));
 const doc = fs.readFileSync(path.join(root, "docs/engineering/upload-workspace.md"), "utf8");
 const workspace = fs.readFileSync(
-  path.join(root, "apps/extension/src/entrypoints/workspace/Workspace.tsx"),
+  path.join(root, "apps/extension/src/shared/workflow/WorkflowApp.tsx"),
   "utf8",
 );
 

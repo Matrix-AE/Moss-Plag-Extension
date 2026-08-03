@@ -13,12 +13,15 @@ const DEFAULTS = Object.freeze({
   reportLabel: "",
   experimental: false,
   directoryMode: "derived",
+  /** Empty allowlist = no extra restriction beyond intake/capability rules. */
+  fileExtensions: Object.freeze([]),
 });
 
 const BOUNDS = Object.freeze({
   resultCount: { min: 1, max: 1000 },
   commonMatchThreshold: { min: 1, max: 1000 },
   reportLabelMax: 80,
+  fileExtensionsMax: 32,
 });
 
 function createSettings(capabilities = {}) {
@@ -26,11 +29,12 @@ function createSettings(capabilities = {}) {
     resultCount: capabilities.resultCount !== false,
     commonMatchThreshold: capabilities.commonMatchThreshold !== false,
     reportLabel: capabilities.reportLabel !== false,
+    fileExtensions: capabilities.fileExtensions !== false,
     experimental: false,
   };
   return {
     ok: true,
-    settings: { ...DEFAULTS },
+    settings: { ...DEFAULTS, fileExtensions: [] },
     available,
     bounds: BOUNDS,
   };
@@ -69,7 +73,52 @@ function updateSetting(settings, key, value, { capabilities = {} } = {}) {
     next.reportLabel = sanitized.value;
     return { ok: true, settings: next };
   }
+  if (key === "fileExtensions") {
+    const parsed = parseExtensionAllowlist(value);
+    if (parsed.error) return { ok: false, error: parsed.error, settings };
+    next.fileExtensions = parsed.value;
+    return { ok: true, settings: next };
+  }
   return { ok: false, error: "unknown-setting", settings };
+}
+
+/** Validated extension allowlist (Option-style file restriction). */
+function parseExtensionAllowlist(value) {
+  const raw = Array.isArray(value)
+    ? value
+    : String(value || "")
+        .split(/[\s,;]+/)
+        .filter(Boolean);
+  if (raw.length > BOUNDS.fileExtensionsMax) return { error: "too-many-extensions" };
+  const out = [];
+  for (const entry of raw) {
+    let ext = String(entry).trim().toLowerCase();
+    if (!ext) continue;
+    if (!ext.startsWith(".")) ext = `.${ext}`;
+    if (!/^\.[a-z0-9]{1,12}$/.test(ext)) return { error: "invalid-extension" };
+    if (!out.includes(ext)) out.push(ext);
+  }
+  return { value: out };
+}
+
+/**
+ * Mask a BYO numeric provider id for display. Never treat as authentication,
+ * never log or sync the raw value from this helper.
+ */
+function maskProviderId(value) {
+  const digits = String(value || "").replace(/\D/g, "");
+  if (!digits) return { ok: false, error: "empty-provider-id", masked: "", digits: "" };
+  if (!/^\d{3,12}$/.test(digits)) {
+    return { ok: false, error: "invalid-provider-id", masked: "", digits };
+  }
+  if (digits.length <= 4) {
+    return { ok: true, masked: "*".repeat(digits.length), digits };
+  }
+  return {
+    ok: true,
+    masked: `${"*".repeat(digits.length - 4)}${digits.slice(-4)}`,
+    digits,
+  };
 }
 
 function sanitizeLabel(value) {
@@ -95,6 +144,7 @@ function serializeSettings(draft) {
     reportLabel: sanitizeLabel(settings.reportLabel || "").value || undefined,
     experimental: false,
     directoryMode,
+    fileExtensions: Array.isArray(settings.fileExtensions) ? settings.fileExtensions : [],
   };
   // Deterministic key order
   return JSON.stringify(payload, Object.keys(payload).sort());
@@ -118,6 +168,10 @@ function validateSettings(settings, capabilities = {}) {
     const s = sanitizeLabel(settings.reportLabel);
     if (s.error) errors.push(s.error);
   }
+  if (settings.fileExtensions != null) {
+    const parsed = parseExtensionAllowlist(settings.fileExtensions);
+    if (parsed.error) errors.push(parsed.error);
+  }
   const created = createSettings(capabilities);
   if (settings.resultCount != null && !created.available.resultCount) errors.push("resultCount-unavailable");
   return { ok: errors.length === 0, errors };
@@ -125,11 +179,15 @@ function validateSettings(settings, capabilities = {}) {
 
 function buildSettingsPanelHtml(settings, { capabilities = {} } = {}) {
   const created = createSettings(capabilities);
+  const allowlist = Array.isArray(settings.fileExtensions) ? settings.fileExtensions.join(", ") : "";
   return {
     html: `<section class="settings-panel" aria-labelledby="settings-heading"><h2 id="settings-heading">Comparison settings</h2><p class="type-helper">Safe defaults work untouched. Advanced values stay within approved ranges. Directory mode is derived from grouping. Experimental mode is disabled.</p>
-<label>Result count <input type="number" name="resultCount" min="${BOUNDS.resultCount.min}" max="${BOUNDS.resultCount.max}" value="${settings.resultCount}" ${created.available.resultCount ? "" : "disabled"} /></label>
-<label>Common-match threshold <input type="number" name="commonMatchThreshold" min="${BOUNDS.commonMatchThreshold.min}" max="${BOUNDS.commonMatchThreshold.max}" value="${settings.commonMatchThreshold}" /></label>
-<label>Report label <input type="text" name="reportLabel" maxlength="${BOUNDS.reportLabelMax}" value="${escape(settings.reportLabel || "")}" /></label>
+<label>Result count (N) <input type="number" name="resultCount" min="${BOUNDS.resultCount.min}" max="${BOUNDS.resultCount.max}" value="${settings.resultCount}" ${created.available.resultCount ? "" : "disabled"} /></label>
+<label>Common-match threshold (M) <input type="number" name="commonMatchThreshold" min="${BOUNDS.commonMatchThreshold.min}" max="${BOUNDS.commonMatchThreshold.max}" value="${settings.commonMatchThreshold}" /></label>
+<label>Report label (C) <input type="text" name="reportLabel" maxlength="${BOUNDS.reportLabelMax}" value="${escape(settings.reportLabel || "")}" /></label>
+<label>Restrict file types <input type="text" name="fileExtensions" value="${escape(allowlist)}" placeholder=".py, .java" ${created.available.fileExtensions ? "" : "disabled"} /></label>
+<p class="type-helper">Directory mode is derived from grouping — not a manual protocol toggle.</p>
+<p class="type-helper" data-experimental="locked">Experimental server is unavailable in production transport.</p>
 <button type="button" data-action="reset-settings">Reset to defaults</button>
 </section>`,
   };
@@ -146,6 +204,12 @@ function validateSettingsModule() {
   if (updateSetting(settings, "reportLabel", "ok\u0000").ok) errors.push("control");
   if (updateSetting(settings, "experimental", true).ok) errors.push("experimental");
   if (updateSetting(settings, "directoryMode", "x").ok) errors.push("dir");
+  if (updateSetting(settings, "fileExtensions", [".py", "..bad"]).ok) errors.push("ext-bad");
+  if (!updateSetting(settings, "fileExtensions", [".py", ".java"]).ok) errors.push("ext-ok");
+  if (maskProviderId("12").ok) errors.push("provider-short");
+  if (!maskProviderId("987654321").ok || !maskProviderId("987654321").masked.endsWith("4321")) {
+    errors.push("provider-mask");
+  }
   const reset = resetSettings();
   if (reset.settings.resultCount !== DEFAULTS.resultCount) errors.push("reset");
   const draft = {
@@ -180,6 +244,8 @@ module.exports = {
   deriveDirectoryMode,
   updateSetting,
   sanitizeLabel,
+  parseExtensionAllowlist,
+  maskProviderId,
   resetSettings,
   serializeSettings,
   validateSettings,

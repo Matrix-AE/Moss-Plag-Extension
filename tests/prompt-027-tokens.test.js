@@ -137,7 +137,7 @@ test("P027-T09 extension consumes tokens without hex literals", () => {
   assert.match(baseCss, /var\(--space-md\)/);
   assert.match(baseCss, /var\(--radius-card\)/);
 
-  for (const entry of ["popup", "workspace", "settings"]) {
+  for (const entry of ["sidepanel", "workspace", "settings"]) {
     const main = fs.readFileSync(
       path.join(root, `apps/extension/src/entrypoints/${entry}/main.tsx`),
       "utf8",

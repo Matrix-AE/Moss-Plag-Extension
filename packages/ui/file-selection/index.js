@@ -8,7 +8,15 @@
 const FILE_UI_VERSION = 1;
 
 const ACCEPTED_EXTENSIONS = Object.freeze([
-  ".c", ".cc", ".cpp", ".cxx", ".h", ".hpp", ".java", ".py", ".js", ".ts", ".cs", ".go", ".rs", ".php", ".rb", ".swift", ".kt", ".m", ".mm", ".scala",
+  ".c", ".cc", ".cpp", ".cxx", ".h", ".hpp", ".hh", ".hxx",
+  ".java", ".py", ".js", ".jsx", ".mjs", ".cjs", ".ts", ".cs",
+  ".go", ".rs", ".php", ".rb", ".swift", ".kt", ".m", ".mm", ".scala",
+  ".ml", ".mli", ".pas", ".pp", ".p", ".adb", ".ads", ".ada",
+  ".lisp", ".lsp", ".cl", ".scm", ".ss", ".hs", ".lhs",
+  ".f", ".for", ".f90", ".f95", ".f03", ".txt", ".text",
+  ".vhd", ".vhdl", ".pl", ".pm", ".pro", ".s", ".asm", ".a86",
+  ".cir", ".sp", ".spi", ".vb", ".bas", ".vbs", ".mod", ".def",
+  ".sql", ".pls", ".pkb", ".pks",
 ]);
 
 const MAX_FILE_BYTES = 2 * 1024 * 1024;

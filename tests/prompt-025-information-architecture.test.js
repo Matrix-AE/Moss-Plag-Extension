@@ -127,7 +127,7 @@ test("P025-T05 facilitator prototype and product wiring exist", () => {
   assert.match(html, /Try paywall early/);
 
   const workspace = fs.readFileSync(
-    path.join(root, "apps/extension/src/entrypoints/workspace/Workspace.tsx"),
+    path.join(root, "apps/extension/src/shared/workflow/WorkflowApp.tsx"),
     "utf8",
   );
   assert.match(workspace, /Paywall/);

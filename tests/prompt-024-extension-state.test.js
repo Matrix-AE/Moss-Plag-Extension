@@ -238,7 +238,7 @@ test("P024-T11 TypeScript message surface exports the full allowlist", () => {
   ]);
 
   const workspace = fs.readFileSync(
-    path.join(root, "apps/extension/src/entrypoints/workspace/Workspace.tsx"),
+    path.join(root, "apps/extension/src/shared/workflow/WorkflowApp.tsx"),
     "utf8",
   );
   assert.match(workspace, /state\/get/);

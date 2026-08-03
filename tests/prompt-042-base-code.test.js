@@ -66,7 +66,7 @@ test("P042-T03 duplicate, collision, base-vs-submission, docs wiring", () => {
   const pkg = JSON.parse(fs.readFileSync(path.join(root, "packages/ui/package.json"), "utf8"));
   assert.equal(pkg.exports["./base-code"], "./base-code/index.js");
   const workspace = fs.readFileSync(
-    path.join(root, "apps/extension/src/entrypoints/workspace/Workspace.tsx"),
+    path.join(root, "apps/extension/src/shared/workflow/WorkflowApp.tsx"),
     "utf8",
   );
   assert.match(workspace, /Base code|base-code|base files/i);

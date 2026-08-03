@@ -59,7 +59,7 @@ test("P039-T04 package export and workspace mention", () => {
   const pkg = JSON.parse(fs.readFileSync(path.join(root, "packages/ui/package.json"), "utf8"));
   assert.equal(pkg.exports["./intake"], "./intake/index.js");
   const workspace = fs.readFileSync(
-    path.join(root, "apps/extension/src/entrypoints/workspace/Workspace.tsx"),
+    path.join(root, "apps/extension/src/shared/workflow/WorkflowApp.tsx"),
     "utf8",
   );
   assert.match(workspace, /intake|drop zone|Browse files|local-only|local only/i);

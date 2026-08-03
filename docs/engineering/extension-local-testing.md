@@ -17,15 +17,16 @@ Unpacked output: `apps/extension/.output/chrome-mv3`
 2. Enable **Developer mode**.
 3. Click **Load unpacked**.
 4. Select `apps/extension/.output/chrome-mv3`.
-5. Pin the extension; open the **popup**, then **Open workspace**.
+5. Pin the extension.
+6. Click the toolbar icon — the **Side Panel** opens directly (no popup, no new tab).
 
 ## What to click through
 
 | Surface | Verify |
 | --- | --- |
-| Popup | Status glance, open workspace / settings |
-| Workspace | Mode (Pair/Batch), language, intake, grouping, base code, settings, preflight, review consents, paywall gate |
-| Settings | Origins and permissions copy |
+| Side Panel (narrow ~360px and wide ~560–600px) | Mode (Pair/Batch), searchable language list (all capability languages), source/base intake, group preview, Advanced options (M/N/C, file restrictions, derived directory mode, experimental lockout), Account (masked provider ID after entitlement), preflight, review consents, paywall gate, sticky bottom CTA |
+| Settings (embedded options) | Origins and permissions copy, including `sidePanel` |
+| Themes | Inspect with OS light and dark `prefers-color-scheme` |
 
 ## Dev loop (optional)
 

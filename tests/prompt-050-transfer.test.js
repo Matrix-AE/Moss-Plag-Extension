@@ -56,7 +56,7 @@ test("P050-T03 docs and package export", () => {
   const pkg = JSON.parse(fs.readFileSync(path.join(root, "apps/api/package.json"), "utf8"));
   assert.equal(pkg.exports["./uploads/transfer"], "./uploads/transfer-manager.js");
   const workspace = fs.readFileSync(
-    path.join(root, "apps/extension/src/entrypoints/workspace/Workspace.tsx"),
+    path.join(root, "apps/extension/src/shared/workflow/WorkflowApp.tsx"),
     "utf8",
   );
   assert.match(workspace, /transfer|upload progress|Start job/i);

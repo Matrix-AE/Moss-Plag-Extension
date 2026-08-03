@@ -6,13 +6,15 @@
  * Stable internal IDs only — never trust temporary server paths as identity.
  */
 
-const crypto = require("node:crypto");
 const groupBuilder = require("../group-builder");
 
 const GROUPING_VERSION = 1;
 
+/** Browser- and Node-safe opaque ids — never use Node-only crypto in UI packages. */
 function newId(prefix) {
-  return `${prefix}_${crypto.randomBytes(6).toString("hex")}`;
+  const bytes = new Uint8Array(6);
+  globalThis.crypto.getRandomValues(bytes);
+  return `${prefix}_${[...bytes].map((b) => b.toString(16).padStart(2, "0")).join("")}`;
 }
 
 function topLevelFolder(item) {
