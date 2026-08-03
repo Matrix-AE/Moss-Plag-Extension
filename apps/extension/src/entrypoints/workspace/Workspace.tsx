@@ -50,13 +50,13 @@ export function Workspace() {
   }, [refresh]);
 
   return (
-    <main className="shell shell--page">
-      <header className="row">
+    <div className="shell shell--page">
+      <header className="row" role="banner">
         <h1>Similarity workspace</h1>
-        <span className="badge">Shell + state</span>
+        <span className="badge" role="status">Shell + state</span>
       </header>
 
-      <nav className="rail" aria-label="Workspace steps">
+      <nav className="rail" aria-label="Workspace steps" role="navigation">
         {[
           "Select",
           "Group",
@@ -72,6 +72,7 @@ export function Workspace() {
         ))}
       </nav>
 
+      <main role="main">
       <p>
         File selection and grouping land next. This surface already recovers drafts and active opaque
         job ids from <code>storage.local</code> after the popup closes or the service worker suspends.
@@ -113,6 +114,13 @@ export function Workspace() {
           </button>
         </div>
       </section>
-    </main>
+      </main>
+      <footer role="contentinfo" className="row" style={{ marginTop: 16 }}>
+        <button type="button">Continue</button>
+        <button type="button" className="secondary" onClick={() => void discard()}>
+          Discard draft
+        </button>
+      </footer>
+    </div>
   );
 }
