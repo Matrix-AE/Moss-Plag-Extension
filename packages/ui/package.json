@@ -27,7 +27,8 @@
     "./preflight": "./preflight/index.js",
     "./settings": "./settings/index.js",
     "./review": "./review/index.js",
-    "./result-experience": "./result-experience/index.js"
+    "./result-experience": "./result-experience/index.js",
+    "./error-recovery": "./error-recovery/index.js"
   },
   "scripts": {
     "emit:tokens": "node ../../scripts/emit-ui-tokens.js",
