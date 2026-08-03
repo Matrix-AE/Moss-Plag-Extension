@@ -1,0 +1,14 @@
+{
+  "name": "@moss/provider-adapter",
+  "version": "0.0.0",
+  "private": true,
+  "type": "commonjs",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js"
+  },
+  "dependencies": {
+    "@moss/domain": "0.0.0",
+    "@moss/contracts": "0.0.0"
+  }
+}

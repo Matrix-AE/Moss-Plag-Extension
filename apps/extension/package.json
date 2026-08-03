@@ -1,0 +1,11 @@
+{
+  "name": "@moss/extension",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Chrome MV3 extension workspace (scaffold)",
+  "dependencies": {
+    "@moss/domain": "0.0.0",
+    "@moss/ui": "0.0.0",
+    "@moss/contracts": "0.0.0"
+  }
+}

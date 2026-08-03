@@ -1,0 +1,10 @@
+{
+  "name": "@moss/worker-submit",
+  "version": "0.0.0",
+  "private": true,
+  "dependencies": {
+    "@moss/domain": "0.0.0",
+    "@moss/contracts": "0.0.0",
+    "@moss/provider-adapter": "0.0.0"
+  }
+}

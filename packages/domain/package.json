@@ -1,0 +1,14 @@
+{
+  "name": "@moss/domain",
+  "version": "0.0.0",
+  "private": true,
+  "type": "commonjs",
+  "main": "comparison-model.js",
+  "exports": {
+    ".": "./comparison-model.js",
+    "./comparison-model": "./comparison-model.js"
+  },
+  "files": [
+    "comparison-model.js"
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "name": "moss-plag-extension",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Code similarity workflow extension monorepo (Matrix-AE)",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node --test tests/**/*.test.js packages/**/*.test.js apps/**/*.test.js",
+    "test:domain": "node --test tests/prompt-011-domain-model.test.js",
+    "typecheck": "node scripts/check-workspaces.js",
+    "lint": "node scripts/check-workspaces.js",
+    "build": "node scripts/check-workspaces.js"
+  }
+}

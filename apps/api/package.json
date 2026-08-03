@@ -1,0 +1,9 @@
+{
+  "name": "@moss/api",
+  "version": "0.0.0",
+  "private": true,
+  "dependencies": {
+    "@moss/domain": "0.0.0",
+    "@moss/contracts": "0.0.0"
+  }
+}
