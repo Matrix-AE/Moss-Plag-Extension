@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Language — Prompt 040</title>
+    <link rel="stylesheet" href="../tokens/tokens.css" />
+    <style>
+      body { margin: 16px; font-family: system-ui; background: var(--surface); color: var(--text); }
+      label { display: block; margin-top: 8px; }
+      select, input { margin-top: 4px; padding: 6px; }
+    </style>
+  </head>
+  <body data-theme="light">
+    <h1>Language selection</h1>
+    <p class="type-helper">Languages loaded from server capabilities (demo fixture).</p>
+    <label for="language-search">Search languages</label>
+    <input id="language-search" type="search" aria-label="Search languages" />
+    <label for="language-select">Language</label>
+    <select id="language-select" aria-label="Programming language" required>
+      <option value="">Select a language…</option>
+      <option value="python">Python</option>
+      <option value="java">Java</option>
+      <option value="cpp">C++</option>
+    </select>
+    <p id="hint" role="status">Suggestions from extensions still need your confirmation.</p>
+    <button id="confirm" type="button">Confirm language</button>
+    <script>
+      const select = document.getElementById("language-select");
+      const hint = document.getElementById("hint");
+      const search = document.getElementById("language-search");
+      search.addEventListener("input", () => {
+        const q = search.value.toLowerCase();
+        for (const option of select.options) {
+          if (!option.value) continue;
+          option.hidden = q && !option.text.toLowerCase().includes(q) && !option.value.includes(q);
+        }
+      });
+      document.getElementById("confirm").addEventListener("click", () => {
+        if (!select.value) {
+          hint.textContent = "Choose a language before confirming.";
+          return;
+        }
+        hint.textContent = `Confirmed ${select.selectedOptions[0].text}. Guesses are never submitted silently.`;
+      });
+    </script>
+  </body>
+</html>

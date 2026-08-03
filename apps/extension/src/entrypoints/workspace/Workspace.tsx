@@ -174,6 +174,23 @@ export function Workspace() {
           </p>
         </section>
 
+        <section className="card" aria-labelledby="language-heading">
+          <h2 id="language-heading">Language</h2>
+          <p className="status">
+            Languages come from server capabilities. Extension-based suggestions still need an
+            explicit confirmation — guesses are never submitted silently.
+          </p>
+          <label className="row" htmlFor="workspace-language">
+            <span>Programming language</span>
+            <select id="workspace-language" aria-label="Programming language" defaultValue="">
+              <option value="">Select a language…</option>
+              <option value="python">Python</option>
+              <option value="java">Java</option>
+              <option value="cpp">C++</option>
+            </select>
+          </label>
+        </section>
+
         <section className="card" aria-labelledby="intake-heading">
           <h2 id="intake-heading">Add files</h2>
           <div
