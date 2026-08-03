@@ -5,6 +5,11 @@
   "type": "commonjs",
   "main": "index.js",
   "exports": {
-    ".": "./index.js"
+    ".": "./index.js",
+    "./tokens": "./tokens/index.js",
+    "./tokens.css": "./tokens/tokens.css"
+  },
+  "scripts": {
+    "emit:tokens": "node ../../scripts/emit-ui-tokens.js"
   }
 }

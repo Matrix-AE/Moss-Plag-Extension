@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Token specimens — Prompt 027</title>
+    <link rel="stylesheet" href="../tokens/tokens.css" />
+    <link rel="stylesheet" href="./specimen.css" />
+  </head>
+  <body>
+    <header class="page-header">
+      <h1>Semantic token specimens</h1>
+      <p class="lede">
+        Popup and workspace layouts bound only to semantic CSS variables from
+        <code>@moss/ui</code>. No hex literals in specimen CSS.
+      </p>
+      <div class="controls">
+        <label>
+          Theme
+          <select id="theme">
+            <option value="dark">Dark</option>
+            <option value="light">Light</option>
+          </select>
+        </label>
+        <label>
+          Viewport
+          <select id="viewport">
+            <option value="popup">Popup 320×520</option>
+            <option value="workspace">Workspace 880×720</option>
+          </select>
+        </label>
+        <label>
+          Zoom
+          <select id="zoom">
+            <option value="1">100%</option>
+            <option value="1.25">125%</option>
+            <option value="1.5">150%</option>
+          </select>
+        </label>
+      </div>
+      <p id="status" class="status-line" role="status"></p>
+    </header>
+
+    <div id="stage" class="stage" data-viewport="popup">
+      <div id="frame" class="frame" data-specimen="popup">
+        <!-- filled by specimen.js -->
+      </div>
+    </div>
+
+    <section class="matrix" aria-label="Snapshot matrix">
+      <h2>Viewport × zoom matrix</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Viewport</th>
+            <th>100%</th>
+            <th>125%</th>
+            <th>150%</th>
+          </tr>
+        </thead>
+        <tbody id="matrix-body"></tbody>
+      </table>
+    </section>
+
+    <script src="./specimen.js"></script>
+  </body>
+</html>

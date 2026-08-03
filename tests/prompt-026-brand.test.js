@@ -158,25 +158,33 @@ test("P026-T12 the mood board renders the model rather than duplicating it", () 
   assert.equal(/#[0-9a-f]{6}/i.test(moodBoardJs), false, "mood-board.js should not hardcode hex");
 });
 
-test("P026-T14 extension stylesheet uses the approved palette in both themes", () => {
-  const css = fs.readFileSync(
+test("P026-T14 approved palette ships through @moss/ui tokens used by the extension", () => {
+  const tokenCss = fs.readFileSync(
+    path.join(root, "packages/ui/tokens/tokens.css"),
+    "utf8",
+  );
+  const baseCss = fs.readFileSync(
     path.join(root, "apps/extension/src/styles/base.css"),
     "utf8",
   );
   const kebab = (role) => `--${role.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)}`;
-  const darkBlock = css.slice(css.indexOf("@media (prefers-color-scheme: dark)"));
-  const lightBlock = css.slice(0, css.indexOf("@media (prefers-color-scheme: dark)"));
 
   for (const [role, hex] of Object.entries(brand.PALETTE.light)) {
-    assert.ok(lightBlock.includes(`${kebab(role)}: ${hex};`), `light ${role} should be ${hex}`);
+    assert.ok(tokenCss.includes(`${kebab(role)}: ${hex};`), `light ${role} should be ${hex}`);
   }
   for (const [role, hex] of Object.entries(brand.PALETTE.dark)) {
-    assert.ok(darkBlock.includes(`${kebab(role)}: ${hex};`), `dark ${role} should be ${hex}`);
+    assert.ok(tokenCss.includes(`${kebab(role)}: ${hex};`), `dark ${role} should be ${hex}`);
   }
-  // Components read roles, so no unapproved hex may appear outside the two theme blocks.
-  const body = css.slice(css.indexOf("}", css.indexOf("@media (prefers-color-scheme: dark)")));
-  const strays = body.match(/#[0-9a-f]{3,8}\b/gi) || [];
-  assert.deepEqual(strays, []);
+
+  // Extension component CSS consumes variables only — no hex literals.
+  assert.equal((baseCss.match(/#[0-9a-f]{3,8}\b/gi) || []).length, 0);
+  for (const entry of ["popup", "workspace", "settings"]) {
+    const main = fs.readFileSync(
+      path.join(root, `apps/extension/src/entrypoints/${entry}/main.tsx`),
+      "utf8",
+    );
+    assert.match(main, /@moss\/ui\/tokens\.css/);
+  }
 });
 
 test("P026-T13 doc records the live walkthrough and defers tokens to Prompt 027", () => {

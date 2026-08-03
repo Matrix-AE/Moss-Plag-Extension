@@ -18,7 +18,7 @@
 | `apps/worker-cleanup` | `@moss/worker-cleanup` | Source deletion worker |
 | `packages/domain` | `@moss/domain` | Comparison domain model |
 | `packages/contracts` | `@moss/contracts` | Shared constants/contracts |
-| `packages/ui` | `@moss/ui` | Browser-safe UI helpers |
+| `packages/ui` | `@moss/ui` | Browser-safe UI helpers and versioned design tokens |
 | `packages/provider-adapter` | `@moss/provider-adapter` | Provider boundary (server/worker only) |
 | `infra/` | — | Future deploy templates |
 

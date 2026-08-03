@@ -1,0 +1,203 @@
+/* Specimen chrome uses page-local vars; the framed product UI uses only token vars. */
+.page-header {
+  padding: 20px 24px 8px;
+  font-family: "Segoe UI", system-ui, sans-serif;
+  color: #14161a;
+  background: #eef1f6;
+}
+
+.page-header h1 {
+  margin: 0 0 6px;
+  font-size: 22px;
+}
+
+.lede {
+  margin: 0 0 12px;
+  color: #545c68;
+  font-size: 13px;
+  max-width: 64ch;
+}
+
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 20px;
+  margin-bottom: 8px;
+}
+
+.controls label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: #545c68;
+}
+
+.status-line {
+  font-size: 12px;
+  color: #1c5f3a;
+  min-height: 1.2em;
+}
+
+.stage {
+  padding: 16px 24px 28px;
+  background: #dfe3ea;
+  overflow: auto;
+}
+
+.frame {
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-panel);
+  box-shadow: var(--shadow-none);
+  transform-origin: top left;
+}
+
+.frame[data-specimen="popup"] {
+  width: var(--size-popup-width);
+  min-height: 520px;
+}
+
+.frame[data-specimen="workspace"] {
+  width: min(100%, var(--size-workspace-max));
+  min-height: 720px;
+}
+
+/* Product UI — semantic tokens only. */
+.shell {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  padding: var(--space-md);
+}
+
+.shell--page {
+  gap: var(--space-lg);
+  padding: var(--space-2xl) var(--space-xl);
+}
+
+.shell h1 {
+  margin: 0;
+  font-size: 16px;
+  color: var(--text);
+}
+
+.shell p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.card {
+  border: var(--border-hairline) solid var(--border);
+  border-radius: var(--radius-card);
+  padding: var(--space-sm);
+  background: var(--surface-muted);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+}
+
+button.primary {
+  font: inherit;
+  border: 0;
+  border-radius: var(--radius-control);
+  padding: var(--space-xs) var(--space-sm);
+  cursor: pointer;
+  background: var(--accent);
+  color: var(--accent-text);
+}
+
+button.primary:focus-visible {
+  outline: var(--border-focus) solid var(--focus);
+  outline-offset: 2px;
+}
+
+button.secondary {
+  font: inherit;
+  border-radius: var(--radius-control);
+  padding: var(--space-xs) var(--space-sm);
+  cursor: pointer;
+  background: transparent;
+  border: var(--border-hairline) solid var(--border);
+  color: var(--text);
+}
+
+button.secondary:focus-visible {
+  outline: var(--border-focus) solid var(--focus);
+  outline-offset: 2px;
+}
+
+.badge {
+  border: var(--border-hairline) solid var(--border);
+  border-radius: var(--radius-pill);
+  padding: 2px var(--space-xs);
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.badge--info {
+  color: var(--info);
+  border-color: currentColor;
+}
+
+.badge--caution {
+  color: var(--caution);
+  border-color: currentColor;
+}
+
+.badge--danger {
+  color: var(--danger);
+  border-color: currentColor;
+}
+
+.badge--success {
+  color: var(--success);
+  border-color: currentColor;
+}
+
+.rail {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-hair) var(--space-xs);
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.rail span[aria-current="step"] {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.matrix {
+  padding: 8px 24px 32px;
+  font-family: "Segoe UI", system-ui, sans-serif;
+}
+
+.matrix table {
+  border-collapse: collapse;
+  width: 100%;
+  max-width: 720px;
+  font-size: 13px;
+}
+
+.matrix th,
+.matrix td {
+  border: 1px solid #d3d8e0;
+  padding: 6px 8px;
+  text-align: left;
+}
+
+.matrix td[data-ok="true"] {
+  color: #1c5f3a;
+}
+
+.matrix td[data-ok="false"] {
+  color: #96231f;
+}

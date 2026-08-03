@@ -1,6 +1,7 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
+import "@moss/ui/tokens.css";
 import "../../styles/base.css";
 import { Popup } from "./Popup";
 

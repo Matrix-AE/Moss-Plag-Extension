@@ -9,4 +9,14 @@ function escapeText(value) {
     .replaceAll('"', "&quot;");
 }
 
-module.exports = { escapeText };
+const tokens = require("./tokens");
+
+module.exports = {
+  escapeText,
+  tokens,
+  TOKEN_VERSION: tokens.TOKEN_VERSION,
+  SEMANTIC: tokens.SEMANTIC,
+  COMPONENTS: tokens.COMPONENTS,
+  toCss: tokens.toCss,
+  validateTokens: tokens.validateTokens,
+};
