@@ -328,8 +328,8 @@ export function Workspace() {
               Simulate purchase
             </button>
             <button type="button" onClick={tryStartJob}>
-              Start job
-            </button>
+            Start job
+          </button>
             <button type="button" className="secondary" disabled>
               Confirm and continue
             </button>
@@ -338,6 +338,10 @@ export function Workspace() {
             Upload transfer starts only after entitlement and recorded consent. Progress reports
             completed objects only — no fabricated percent. Restart requires file reselection unless
             upload already completed.
+          </p>
+          <p className="status">
+            Server intake, fair queues, and provider submission run in the API workers with the mock
+            loopback adapter in tests — the extension never opens raw provider TCP.
           </p>
         </section>
 
