@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Quality gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Enable Corepack npm
+        run: |
+          corepack enable
+          corepack prepare npm@10.9.2 --activate
+
+      - name: Install
+        run: npm ci
+
+      - name: Runtime check
+        run: npm run check:runtime
+
+      - name: Format/editorconfig
+        run: npm run format:check
+
+      - name: Lint boundaries
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+        env:
+          CI: true
+
+      - name: Build
+        run: npm run build
+
+      - name: Secret canary scan
+        run: node -e "const fs=require('fs');const {scanForCommittedCanaries}=require('./packages/config/env.js');const text=fs.readFileSync('package-lock.json','utf8');if(scanForCommittedCanaries(text).length){process.exit(1)}"
