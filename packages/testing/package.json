@@ -1,0 +1,11 @@
+{
+  "name": "@moss/testing",
+  "version": "0.0.0",
+  "private": true,
+  "type": "commonjs",
+  "main": "harness.js",
+  "exports": {
+    ".": "./harness.js",
+    "./harness": "./harness.js"
+  }
+}
