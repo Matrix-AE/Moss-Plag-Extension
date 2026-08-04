@@ -68,6 +68,22 @@ Use **Sign in** with those credentials. Create-account also works for other loca
 | Settings (embedded options) | Origins and permissions copy (`storage`, `alarms` only) |
 | Themes | Popup forces dark brand tokens; settings still follow OS preference |
 
+## See a real result in the unpacked extension
+
+1. Keep the live API running: `npm run api:start:live`
+2. Rebuild and reload:
+   ```bash
+   npm run build:extension
+   ```
+   Then in `chrome://extensions` → your extension → **Reload**.
+3. Open the toolbar popup:
+   - Sign in: `demo@mossworkflow.test` / `DemoTest1!`
+   - Unlock $15 → Connect Moss User ID (`936770554` or your id)
+   - Confirm language **python**
+   - Pick File 1 + File 2 → consents → **Start Pair Check**
+4. Wait for phases to finish. Open/copy the Stanford report link (never auto-opens).
+5. **Past results** on the portal keeps those links on this device so you can reopen or copy them later (share a link with a student when you want them to see that run).
+
 ## Manual live smoke (never in CI)
 
 1. `npm run api:start:live`

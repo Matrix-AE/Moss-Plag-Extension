@@ -37,6 +37,13 @@ import {
   type DemoMossCredential,
 } from "../entitlement-demo";
 import * as apiClient from "../api-client";
+import {
+  clearResultHistory,
+  forgetHistoryEntry,
+  loadResultHistory,
+  rememberResult,
+  type ResultHistoryEntry,
+} from "../result-history";
 
 type Gate = "loading" | "auth" | "paywall" | "moss-id" | "portal";
 type AuthMode = "signin" | "create";
@@ -182,8 +189,10 @@ export function WorkflowApp() {
   const [apiMeta, setApiMeta] = useState<{ submitMode?: string; livePublicTcp?: boolean } | null>(
     null,
   );
+  const [resultHistory, setResultHistory] = useState<ResultHistoryEntry[]>([]);
   const syncedRunRef = useRef("");
   const pollInFlightRef = useRef(false);
+  const rememberedJobsRef = useRef<Set<string>>(new Set());
 
   const comparisonMode = "pair" as const;
   const runPhase = run?.phase ?? null;
@@ -287,14 +296,16 @@ export function WorkflowApp() {
   );
 
   const refreshSession = useCallback(async () => {
-    const [nextAccount, nextEntitlement, nextMoss] = await Promise.all([
+    const [nextAccount, nextEntitlement, nextMoss, nextHistory] = await Promise.all([
       loadDemoAccount(),
       loadDemoEntitlement(),
       loadDemoMossCredential(),
+      loadResultHistory(),
     ]);
     setAccount(nextAccount);
     setEntitlement(nextEntitlement);
     setMossCredential(nextMoss);
+    setResultHistory(nextHistory);
     if (nextMoss?.display) {
       setProviderIdMasked(nextMoss.display);
     }
@@ -489,6 +500,23 @@ export function WorkflowApp() {
       }
     })();
   }, [run]);
+
+  // Persist successful report links into local past-results history (device-only, never sync).
+  useEffect(() => {
+    if (!run || run.phase !== "success" || !run.jobId || !reportUrl) return;
+    if (rememberedJobsRef.current.has(run.jobId)) return;
+    rememberedJobsRef.current.add(run.jobId);
+    void (async () => {
+      const saved = await rememberResult({
+        jobId: run.jobId!,
+        reportUrl,
+        language: run.language,
+        label: settings.reportLabel || "Pair Check",
+        mode: run.mode === "live" ? "live" : "demo",
+      });
+      if (saved.ok) setResultHistory(saved.entries);
+    })();
+  }, [run, reportUrl, settings.reportLabel]);
 
   const persistDraftShell = useCallback(async () => {
     await sendShellMessage("state/save-draft", {
@@ -1080,6 +1108,18 @@ export function WorkflowApp() {
     }
   };
 
+  const removeHistoryEntry = async (id: string) => {
+    const next = await forgetHistoryEntry(id);
+    setResultHistory(next.entries);
+    setLinkNote("Removed from past results on this device. The MOSS report itself is unchanged.");
+  };
+
+  const clearHistory = async () => {
+    await clearResultHistory();
+    setResultHistory([]);
+    setLinkNote("Cleared past results from this device.");
+  };
+
   const openSettings = () => {
     void browser.runtime.openOptionsPage();
   };
@@ -1473,6 +1513,65 @@ export function WorkflowApp() {
             ) : null}
 
             {linkNote ? <p className="status">{linkNote}</p> : null}
+          </section>
+        ) : null}
+
+        {gate === "portal" ? (
+          <section className="card" aria-labelledby="history-heading">
+            <div className="row section-head">
+              <h2 id="history-heading">Past results</h2>
+              {resultHistory.length > 0 ? (
+                <button type="button" className="secondary" onClick={() => void clearHistory()}>
+                  Clear all
+                </button>
+              ) : null}
+            </div>
+            <p className="status">
+              Saved on this device only. Treat each link like a password — anyone with it can open the
+              report. Share a link with a student when you want them to review that run.
+            </p>
+            {resultHistory.length === 0 ? (
+              <p className="status">No saved results yet. Successful Pair Checks appear here.</p>
+            ) : (
+              <ul className="file-list">
+                {resultHistory.map((entry) => (
+                  <li key={entry.id} className="file-row">
+                    <div className="stack-field">
+                      <span className="type-label">
+                        {entry.label}
+                        {entry.language ? ` · ${entry.language}` : ""}
+                        {entry.mode === "demo" ? " · demo" : ""}
+                      </span>
+                      <span className="status">{formatClock(entry.createdAt)}</span>
+                      <a href={entry.reportUrl} target="_blank" rel="noreferrer noopener">
+                        Open report
+                      </a>
+                    </div>
+                    <div className="row wrap">
+                      <button
+                        type="button"
+                        className="secondary"
+                        onClick={() => {
+                          void navigator.clipboard.writeText(entry.reportUrl).then(
+                            () => setLinkNote("Past result link copied. Clipboard may keep a copy."),
+                            () => setLinkNote("Copy was blocked by the browser."),
+                          );
+                        }}
+                      >
+                        Copy
+                      </button>
+                      <button
+                        type="button"
+                        className="secondary"
+                        onClick={() => void removeHistoryEntry(entry.id)}
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
           </section>
         ) : null}
 
