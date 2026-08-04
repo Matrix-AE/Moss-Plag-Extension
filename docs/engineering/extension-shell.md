@@ -43,19 +43,19 @@ injects into third-party pages.
 
 | Origin | Use |
 | --- | --- |
-| `https://api.mossworkflow.dev/` | Job creation, status polling, account operations |
-| `https://uploads.mossworkflow.dev/` | Dedicated upload endpoint for submission payloads |
+| `https://mossapi-production.up.railway.app/` | Job creation, uploads, status polling, result reveal (default store build) |
 
-Production / store builds declare only these two in `host_permissions` and CSP `connect-src`.
-Raw provider transport never happens in browser code (ADR-0010). Loopback (`http://127.0.0.1:8787`)
-is developer-only via `wxt dev` + `VITE_MOSS_USE_LOCAL_API=1` — never shipped in the store package.
-See [`deploy-api-mossworkflow.md`](./deploy-api-mossworkflow.md).
+Override with `VITE_MOSS_API_ORIGIN` / `VITE_MOSS_UPLOAD_ORIGIN` at build time if the Railway URL changes.
+
+Production / store builds declare only the hosted HTTPS origin(s) in `host_permissions` and CSP `connect-src`.
+Raw provider transport never happens in browser code (ADR-0010). There is **no localhost** in the store package.
+See [`deploy-railway.md`](./deploy-railway.md).
 
 ## Content Security Policy
 
 ```
 script-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none';
-connect-src 'self' https://api.mossworkflow.dev https://uploads.mossworkflow.dev
+connect-src 'self' https://mossapi-production.up.railway.app
 ```
 
 Prohibited and checked automatically: inline scripts, inline event handlers, remote script URLs,

@@ -84,25 +84,15 @@ Require header `X-Owner-User-Id` (or replace with real session auth before launc
 
 ## Extension cutover
 
-Production builds already default to the hosted origin (`apps/extension/src/shared/origins.ts`).
+Production builds default to the Railway hosted origin (`apps/extension/src/shared/origins.ts`).
 
-1. Deploy API + TLS
+1. Deploy API + TLS (Railway — see [`deploy-railway.md`](./deploy-railway.md))
 2. Confirm `/health`
 3. `npm run build:extension && npm run check:extension && npm run zip:extension`
 4. Load / publish the zip — **no localhost host permission** in the store package
 5. Smoke: sign-in → purchase → Moss ID → two files → result link
 
-Local loopback is only for developers:
-
-```bash
-# Terminal A
-npm run api:start
-
-# Terminal B — opt into loopback (never for store builds)
-set VITE_MOSS_USE_LOCAL_API=1
-npm run build:extension
-# or: npm run dev --workspace @moss/extension
-```
+Customers need **nothing installed locally** except the Chrome extension. You must keep the hosted API online.
 
 ## Still required before charging customers
 

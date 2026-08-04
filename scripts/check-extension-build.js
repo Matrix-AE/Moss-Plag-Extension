@@ -10,15 +10,15 @@ function originWithSlash(value, fallback) {
   return `${raw}/`;
 }
 
-const DEFAULT_API = "https://api.mossworkflow.dev";
-const DEFAULT_UPLOAD = "https://uploads.mossworkflow.dev";
+const DEFAULT_API = "https://mossapi-production.up.railway.app";
+const DEFAULT_UPLOAD = "https://mossapi-production.up.railway.app";
 const apiHost = originWithSlash(process.env.VITE_MOSS_API_ORIGIN, DEFAULT_API);
 const uploadHost = originWithSlash(
   process.env.VITE_MOSS_UPLOAD_ORIGIN || process.env.VITE_MOSS_API_ORIGIN,
-  process.env.VITE_MOSS_API_ORIGIN ? apiHost.replace(/\/$/, "") : DEFAULT_UPLOAD,
+  apiHost.replace(/\/$/, ""),
 );
 
-const ALLOWED_HOSTS = [apiHost, uploadHost];
+const ALLOWED_HOSTS = [...new Set([apiHost, uploadHost])];
 const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
 const NETWORK_SINK_PATTERN =

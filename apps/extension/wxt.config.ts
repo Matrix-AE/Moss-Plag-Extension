@@ -9,27 +9,18 @@ function originNoSlash(value: string, fallback: string): string {
   return String(value || fallback).trim().replace(/\/+$/, "");
 }
 
-const DEFAULT_API = "https://api.mossworkflow.dev";
-const DEFAULT_UPLOAD = "https://uploads.mossworkflow.dev";
+const DEFAULT_API = "https://mossapi-production.up.railway.app";
 
 const apiOrigin = originWithSlash(process.env.VITE_MOSS_API_ORIGIN || "", DEFAULT_API);
 const uploadOrigin = originWithSlash(
   process.env.VITE_MOSS_UPLOAD_ORIGIN || process.env.VITE_MOSS_API_ORIGIN || "",
-  process.env.VITE_MOSS_API_ORIGIN ? originNoSlash(process.env.VITE_MOSS_API_ORIGIN, DEFAULT_API) : DEFAULT_UPLOAD,
+  originNoSlash(apiOrigin, DEFAULT_API),
 );
 const apiConnect = originNoSlash(apiOrigin, DEFAULT_API);
-const uploadConnect = originNoSlash(uploadOrigin, DEFAULT_UPLOAD);
+const uploadConnect = originNoSlash(uploadOrigin, DEFAULT_API);
 
-const LOCAL_API_ORIGIN = "http://127.0.0.1:8787/";
-const allowLocalApi = process.env.VITE_MOSS_USE_LOCAL_API === "1";
-
-const hostPermissions = allowLocalApi
-  ? [apiOrigin, uploadOrigin, LOCAL_API_ORIGIN]
-  : [apiOrigin, uploadOrigin];
-
-const connectSrc = allowLocalApi
-  ? `script-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; connect-src 'self' ${apiConnect} ${uploadConnect} http://127.0.0.1:8787`
-  : `script-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; connect-src 'self' ${apiConnect} ${uploadConnect}`;
+const hostPermissions = [...new Set([apiOrigin, uploadOrigin])];
+const connectHosts = [...new Set([apiConnect, uploadConnect])].join(" ");
 
 export default defineConfig({
   srcDir: "src",
@@ -56,7 +47,7 @@ export default defineConfig({
       open_in_tab: false,
     },
     content_security_policy: {
-      extension_pages: connectSrc,
+      extension_pages: `script-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; connect-src 'self' ${connectHosts}`,
     },
     icons: {
       16: "icon/16.png",

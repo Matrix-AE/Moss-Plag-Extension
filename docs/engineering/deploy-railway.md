@@ -62,12 +62,12 @@ If you still only see `RUN npm ci --omit=dev` with no `api-module-ok`, Railway i
 
 ## 4. Point the extension at Railway
 
-On your PC (PowerShell), rebuild with your Railway URL:
+Store builds already default to `https://mossapi-production.up.railway.app`.
+To override (PowerShell):
 
 ```powershell
 $env:VITE_MOSS_API_ORIGIN = "https://YOUR-SUBDOMAIN.up.railway.app"
 $env:VITE_MOSS_UPLOAD_ORIGIN = "https://YOUR-SUBDOMAIN.up.railway.app"
-Remove-Item Env:VITE_MOSS_USE_LOCAL_API -ErrorAction SilentlyContinue
 npm run build:extension
 npm run check:extension
 ```

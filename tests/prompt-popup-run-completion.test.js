@@ -181,12 +181,11 @@ test("P-RUN-T09 a labelled local demo report page backs the produced link", () =
   assert.match(report, /no similarity measurements/i);
   assert.doesNotMatch(report, /\d+\s*%/, "a simulated report must not invent similarity numbers");
   assert.match(shellDoc, /run-lifecycle|deadline/i);
-  assert.match(shellDoc, /api\.mossworkflow\.dev/);
-  assert.doesNotMatch(shellDoc, /connect-src 'self' https:\/\/api\.mossworkflow\.dev https:\/\/uploads\.mossworkflow\.dev http:\/\/127\.0\.0\.1:8787/);
-  assert.match(localDoc, /deploy-api-mossworkflow|api\.mossworkflow\.dev/i);
-  assert.match(localDoc, /VITE_MOSS_USE_LOCAL_API/);
+  assert.match(shellDoc, /mossapi-production\.up\.railway\.app|api\.mossworkflow\.dev/);
+  assert.doesNotMatch(shellDoc, /VITE_MOSS_USE_LOCAL_API|http:\/\/127\.0\.0\.1:8787/);
+  assert.match(localDoc, /deploy-railway|mossapi-production|Railway/i);
+  assert.doesNotMatch(localDoc, /VITE_MOSS_USE_LOCAL_API/);
   const wxt = fs.readFileSync(path.join(root, "apps/extension/wxt.config.ts"), "utf8");
-  assert.match(wxt, /VITE_MOSS_USE_LOCAL_API/);
-  assert.match(wxt, /allowLocalApi/);
-  assert.doesNotMatch(wxt, /host_permissions:\s*\[API_ORIGIN,\s*UPLOAD_ORIGIN,\s*LOCAL_API_ORIGIN\]/);
+  assert.doesNotMatch(wxt, /VITE_MOSS_USE_LOCAL_API|allowLocalApi|localhost|127\.0\.0\.1/);
+  assert.match(wxt, /mossapi-production\.up\.railway\.app/);
 });

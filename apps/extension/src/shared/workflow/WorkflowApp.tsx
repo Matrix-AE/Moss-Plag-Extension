@@ -184,7 +184,7 @@ export function WorkflowApp() {
   const [reportUrl, setReportUrl] = useState("");
   const [linkNote, setLinkNote] = useState("");
   const [linkForgotten, setLinkForgotten] = useState(false);
-  /** When the local API is down, user may opt into the offline demo path. */
+  /** When the hosted API is unreachable, user may opt into the offline demo path. */
   const [allowOfflineDemo, setAllowOfflineDemo] = useState(false);
   const [apiMeta, setApiMeta] = useState<{ submitMode?: string; livePublicTcp?: boolean } | null>(
     null,
@@ -333,11 +333,13 @@ export function WorkflowApp() {
     } else if (next?.activeJob) {
       // A closed popup stops the local ticker, so recovery re-applies the deadline instead of
       // resuming a spinner that can never end.
-      const recovered = runLifecycle.recoverRunState(next.activeJob, {
+      const isLiveJob = String(next.activeJob.jobId || "").startsWith("job_");
+      const recoverOpts: { now?: number; deadlineMs?: number; mode?: string } = {
         now: Date.now(),
-        mode: String(next.activeJob.jobId || "").startsWith("job_") ? "live" : "demo",
-        deadlineMs: String(next.activeJob.jobId || "").startsWith("job_") ? 180_000 : undefined,
-      });
+        mode: isLiveJob ? "live" : "demo",
+      };
+      if (isLiveJob) recoverOpts.deadlineMs = 180_000;
+      const recovered = runLifecycle.recoverRunState(next.activeJob, recoverOpts);
       if (recovered.ok && recovered.state) {
         setRun(recovered.state);
         setNote(
@@ -853,12 +855,15 @@ export function WorkflowApp() {
       health = await apiClient.probeApi();
       if (!health.ok) {
         setGateMessage(
-          `Hosted API at ${health.origin} is unreachable. Deploy api.mossworkflow.dev (see docs/engineering/deploy-api-mossworkflow.md), then try again — or use offline demo for UI-only testing.`,
+          `Hosted API at ${health.origin} is unreachable. Check that Railway is online (see docs/engineering/deploy-railway.md), then try again — or use offline demo for UI-only testing.`,
         );
         setAllowOfflineDemo(false);
         return;
       }
-      setApiMeta({ submitMode: health.submitMode, livePublicTcp: health.livePublicTcp });
+      const nextMeta: { submitMode?: string; livePublicTcp?: boolean } = {};
+      if (health.submitMode !== undefined) nextMeta.submitMode = health.submitMode;
+      if (health.livePublicTcp !== undefined) nextMeta.livePublicTcp = health.livePublicTcp;
+      setApiMeta(nextMeta);
     }
 
     const mossUserId = deobfuscateMossUserId(mossCredential.localCipher);

@@ -1,16 +1,12 @@
 /**
  * Hosted API client for the popup Pair Check flow.
- * Production talks only to https://api.mossworkflow.dev.
- * Loopback is available only in explicit local-dev builds (VITE_MOSS_USE_LOCAL_API=1).
+ * Production talks only to the configured HTTPS API (Railway by default).
  */
 
-import { API_ORIGIN, LOCAL_API_ORIGIN, USE_LOCAL_API, isAllowedOrigin } from "./origins";
+import { API_ORIGIN, isAllowedOrigin } from "./origins";
 
-export { LOCAL_API_ORIGIN, USE_LOCAL_API };
-
-/** Production / store builds always use the hosted API. */
+/** Production / store builds always use the hosted API origin. */
 export function resolveApiOrigin(): string {
-  if (USE_LOCAL_API) return LOCAL_API_ORIGIN;
   return API_ORIGIN;
 }
 
@@ -34,14 +30,17 @@ async function apiFetch(
     return { ok: false, status: 0, data: { error: "origin-forbidden" } };
   }
   try {
-    const response = await fetch(`${origin}${path}`, {
+    const init: RequestInit = {
       method,
       headers: {
         "Content-Type": "application/json",
         "X-Owner-User-Id": ownerUserId,
       },
-      body: body === undefined ? undefined : JSON.stringify(body),
-    });
+    };
+    if (body !== undefined) {
+      init.body = JSON.stringify(body);
+    }
+    const response = await fetch(`${origin}${path}`, init);
     const data = (await response.json().catch(() => ({}))) as Json;
     return { ok: response.ok && data.ok !== false, status: response.status, data };
   } catch {
@@ -64,18 +63,24 @@ export async function probeApi(origin = resolveApiOrigin()): Promise<{
       submitMode?: string;
       livePublicTcp?: boolean;
     };
-    return {
+    const result: {
+      ok: boolean;
+      submitMode?: string;
+      livePublicTcp?: boolean;
+      origin: string;
+    } = {
       ok: Boolean(data.ok),
-      submitMode: data.submitMode,
-      livePublicTcp: data.livePublicTcp,
       origin,
     };
+    if (data.submitMode !== undefined) result.submitMode = data.submitMode;
+    if (data.livePublicTcp !== undefined) result.livePublicTcp = data.livePublicTcp;
+    return result;
   } catch {
     return { ok: false, origin };
   }
 }
 
-/** @deprecated Use probeApi — kept as alias during the production cutover. */
+/** @deprecated Use probeApi */
 export const probeLocalApi = probeApi;
 
 export async function createPairJob(input: {
