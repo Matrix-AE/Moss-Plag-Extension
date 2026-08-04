@@ -74,10 +74,11 @@ You are not hosting the Chrome extension on Railway. The extension stays a Chrom
 
 | Symptom | Fix |
 | --- | --- |
+| Healthcheck `/health` never becomes healthy | Redeploy latest `Dockerfile` (starts `node apps/api/server.js`). In Railway **Logs**, look for `[moss-pair-api] listening`. Confirm Variables include the three flags below. |
 | `/health` shows `submitMode: mock-loopback` | Set both `ALLOW_PUBLIC_MOSS_TCP=1` and `ALLOW_HOSTED_PUBLIC_MOSS_TCP=1`, redeploy |
 | Extension says hosted API unreachable | Rebuild with `VITE_MOSS_API_ORIGIN` set to the exact Railway HTTPS URL (no trailing slash needed) |
 | CORS errors | Extension origin is `chrome-extension://…` — server already allows that prefix |
-| Deploy fails on `npm ci` | Ensure `package-lock.json` is committed at repo root |
+| Deploy fails on `npm ci` | Ensure `package-lock.json` is committed at repo root; Dockerfile must copy all of `apps/` and `packages/` |
 
 ## Related
 

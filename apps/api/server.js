@@ -91,10 +91,22 @@ function createServer(options = {}) {
     listen() {
       return new Promise((resolve, reject) => {
         server.once("error", reject);
-        server.listen(port, host, () => {
+        // On cloud hosts, omit the host arg so Node binds dual-stack / all interfaces.
+        const onListening = () => {
           server.removeListener("error", reject);
-          resolve({ host, port, submitMode, url: `http://${host}:${port}` });
-        });
+          const address = server.address();
+          resolve({
+            host: typeof address === "object" && address ? address.address : host,
+            port: typeof address === "object" && address ? address.port : port,
+            submitMode,
+            url: `http://${host}:${port}`,
+          });
+        };
+        if (host === "0.0.0.0" || host === "::") {
+          server.listen(port, onListening);
+        } else {
+          server.listen(port, host, onListening);
+        }
       });
     },
     close() {
@@ -248,7 +260,14 @@ async function readJson(req) {
 }
 
 async function main() {
-  const api = createServer();
+  const env = process.env;
+  const host = resolveListenHost(env);
+  const port = resolveListenPort(env);
+  // eslint-disable-next-line no-console
+  console.log(
+    `[moss-pair-api] starting host=${host} port=${port} nodeEnv=${env.NODE_ENV || ""} railway=${Boolean(env.RAILWAY_ENVIRONMENT)}`,
+  );
+  const api = createServer({ host, port, env });
   const info = await api.listen();
   // eslint-disable-next-line no-console
   console.log(
