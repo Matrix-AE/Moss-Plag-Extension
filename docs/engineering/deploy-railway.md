@@ -43,6 +43,23 @@ Expect JSON like:
 { "ok": true, "service": "moss-pair-api", "submitMode": "public-raw-tcp", "livePublicTcp": true }
 ```
 
+### Confirm you deployed the fixed image
+
+In **Build Logs** you must see:
+
+- `building moss-pair-api 2026-08-04-healthfix2`
+- `api-module-ok`
+
+In **Deploy Logs** you must see:
+
+- `moss-pair-api-boot rev=2026-08-04-healthfix2`
+- `[moss-pair-api] listening`
+
+If you still only see `RUN npm ci --omit=dev` with no `api-module-ok`, Railway is building an **old commit**. Fix:
+
+1. Service → **Settings** → Source → branch **`main`** on `Matrix-AE/Moss-Plag-Extension`
+2. **Deploy** → **Clear build cache** (if available) → **Redeploy**
+
 ## 4. Point the extension at Railway
 
 On your PC (PowerShell), rebuild with your Railway URL:
