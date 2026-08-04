@@ -26,6 +26,17 @@ test("public TCP is gated for production and missing flag", async () => {
     () => live.assertPublicMossAllowed({ env: {}, production: false }),
     (err) => err.code === "public-tcp-flag-required",
   );
+  assert.equal(
+    live.assertPublicMossAllowed({
+      env: {
+        NODE_ENV: "production",
+        ALLOW_PUBLIC_MOSS_TCP: "1",
+        ALLOW_HOSTED_PUBLIC_MOSS_TCP: "1",
+      },
+      production: true,
+    }),
+    true,
+  );
 });
 
 test("mock-loopback pair submit returns allowlisted https URL", async () => {
@@ -130,5 +141,16 @@ test("resolveSubmitMode stays mock unless flag set", () => {
   const { resolveSubmitMode } = require(path.join(root, "apps/api/server"));
   assert.equal(resolveSubmitMode({}), "mock-loopback");
   assert.equal(resolveSubmitMode({ ALLOW_PUBLIC_MOSS_TCP: "1" }), "public-raw-tcp");
-  assert.equal(resolveSubmitMode({ NODE_ENV: "production", ALLOW_PUBLIC_MOSS_TCP: "1" }), "mock-loopback");
+  assert.equal(
+    resolveSubmitMode({ NODE_ENV: "production", ALLOW_PUBLIC_MOSS_TCP: "1" }),
+    "mock-loopback",
+  );
+  assert.equal(
+    resolveSubmitMode({
+      NODE_ENV: "production",
+      ALLOW_PUBLIC_MOSS_TCP: "1",
+      ALLOW_HOSTED_PUBLIC_MOSS_TCP: "1",
+    }),
+    "public-raw-tcp",
+  );
 });

@@ -26,16 +26,37 @@ const { submitPairToMoss } = require("@moss/provider-adapter/live-submit");
 const DEFAULT_PORT = 8787;
 const DEFAULT_HOST = "127.0.0.1";
 
+/**
+ * Submit mode selection:
+ * - public-raw-tcp: requires ALLOW_PUBLIC_MOSS_TCP=1
+ * - in NODE_ENV=production also requires ALLOW_HOSTED_PUBLIC_MOSS_TCP=1 (Railway/BYO hosted opt-in)
+ * - otherwise mock-loopback
+ */
 function resolveSubmitMode(env = process.env) {
-  if (env.NODE_ENV === "production") return "mock-loopback";
-  if (env.ALLOW_PUBLIC_MOSS_TCP === "1") return "public-raw-tcp";
-  return "mock-loopback";
+  const wantPublic = env.ALLOW_PUBLIC_MOSS_TCP === "1";
+  if (!wantPublic) return "mock-loopback";
+  if (env.NODE_ENV === "production" && env.ALLOW_HOSTED_PUBLIC_MOSS_TCP !== "1") {
+    return "mock-loopback";
+  }
+  return "public-raw-tcp";
+}
+
+function resolveListenHost(env = process.env) {
+  if (env.MOSS_API_HOST) return env.MOSS_API_HOST;
+  // Railway / cloud: listen on all interfaces; local default stays loopback.
+  if (env.PORT || env.RAILWAY_ENVIRONMENT || env.RAILWAY_STATIC_URL) return "0.0.0.0";
+  return DEFAULT_HOST;
+}
+
+function resolveListenPort(env = process.env) {
+  const port = Number(env.PORT || env.MOSS_API_PORT || DEFAULT_PORT);
+  return Number.isFinite(port) && port > 0 ? port : DEFAULT_PORT;
 }
 
 function createServer(options = {}) {
   const env = options.env || process.env;
-  const host = options.host || DEFAULT_HOST;
-  const port = Number(options.port || env.MOSS_API_PORT || DEFAULT_PORT);
+  const host = options.host || resolveListenHost(env);
+  const port = Number(options.port || resolveListenPort(env));
   const submitMode = options.submitMode || resolveSubmitMode(env);
   const corsOrigins = new Set(
     options.corsOrigins || [
@@ -97,7 +118,7 @@ async function handleRequest(req, res, ctx) {
   if (req.method === "GET" && path === "/health") {
     writeJson(res, 200, {
       ok: true,
-      service: "moss-local-api",
+      service: "moss-pair-api",
       submitMode: ctx.submitMode,
       livePublicTcp: ctx.submitMode === "public-raw-tcp",
     });
@@ -231,12 +252,12 @@ async function main() {
   const info = await api.listen();
   // eslint-disable-next-line no-console
   console.log(
-    `[moss-local-api] listening on ${info.url} (submitMode=${info.submitMode})`,
+    `[moss-pair-api] listening on ${info.url} (submitMode=${info.submitMode})`,
   );
   if (info.submitMode === "public-raw-tcp") {
     // eslint-disable-next-line no-console
     console.warn(
-      "[moss-local-api] LIVE public MOSS TCP enabled — consumes real userid quota; cleartext TCP.",
+      "[moss-pair-api] LIVE public MOSS TCP enabled — consumes real userid quota; cleartext TCP.",
     );
   }
 }
@@ -244,7 +265,7 @@ async function main() {
 if (require.main === module) {
   main().catch((error) => {
     // eslint-disable-next-line no-console
-    console.error("[moss-local-api] failed to start", error.message || error);
+    console.error("[moss-pair-api] failed to start", error.message || error);
     process.exit(1);
   });
 }
@@ -253,5 +274,7 @@ module.exports = {
   DEFAULT_HOST,
   DEFAULT_PORT,
   resolveSubmitMode,
+  resolveListenHost,
+  resolveListenPort,
   createServer,
 };

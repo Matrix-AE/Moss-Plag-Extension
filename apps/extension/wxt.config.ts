@@ -1,20 +1,35 @@
 import { defineConfig } from "wxt";
 
-// Production / store builds talk only to the hosted relay (ADR-0010).
-// Loopback is opt-in only when VITE_MOSS_USE_LOCAL_API=1 (developer machines).
-const API_ORIGIN = "https://api.mossworkflow.dev/";
-const UPLOAD_ORIGIN = "https://uploads.mossworkflow.dev/";
-const LOCAL_API_ORIGIN = "http://127.0.0.1:8787/";
+function originWithSlash(value: string, fallback: string): string {
+  const raw = String(value || fallback).trim().replace(/\/+$/, "");
+  return `${raw}/`;
+}
 
+function originNoSlash(value: string, fallback: string): string {
+  return String(value || fallback).trim().replace(/\/+$/, "");
+}
+
+const DEFAULT_API = "https://api.mossworkflow.dev";
+const DEFAULT_UPLOAD = "https://uploads.mossworkflow.dev";
+
+const apiOrigin = originWithSlash(process.env.VITE_MOSS_API_ORIGIN || "", DEFAULT_API);
+const uploadOrigin = originWithSlash(
+  process.env.VITE_MOSS_UPLOAD_ORIGIN || process.env.VITE_MOSS_API_ORIGIN || "",
+  process.env.VITE_MOSS_API_ORIGIN ? originNoSlash(process.env.VITE_MOSS_API_ORIGIN, DEFAULT_API) : DEFAULT_UPLOAD,
+);
+const apiConnect = originNoSlash(apiOrigin, DEFAULT_API);
+const uploadConnect = originNoSlash(uploadOrigin, DEFAULT_UPLOAD);
+
+const LOCAL_API_ORIGIN = "http://127.0.0.1:8787/";
 const allowLocalApi = process.env.VITE_MOSS_USE_LOCAL_API === "1";
 
 const hostPermissions = allowLocalApi
-  ? [API_ORIGIN, UPLOAD_ORIGIN, LOCAL_API_ORIGIN]
-  : [API_ORIGIN, UPLOAD_ORIGIN];
+  ? [apiOrigin, uploadOrigin, LOCAL_API_ORIGIN]
+  : [apiOrigin, uploadOrigin];
 
 const connectSrc = allowLocalApi
-  ? "script-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; connect-src 'self' https://api.mossworkflow.dev https://uploads.mossworkflow.dev http://127.0.0.1:8787"
-  : "script-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; connect-src 'self' https://api.mossworkflow.dev https://uploads.mossworkflow.dev";
+  ? `script-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; connect-src 'self' ${apiConnect} ${uploadConnect} http://127.0.0.1:8787`
+  : `script-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; connect-src 'self' ${apiConnect} ${uploadConnect}`;
 
 export default defineConfig({
   srcDir: "src",
@@ -29,7 +44,6 @@ export default defineConfig({
       "Group student submissions, run a similarity check through a hosted relay, and review results.",
     version: "0.0.0",
     minimum_chrome_version: "120",
-    // Every permission maps to a shipped feature; see docs/engineering/extension-shell.md.
     permissions: ["storage", "alarms"],
     optional_permissions: [],
     host_permissions: hostPermissions,
@@ -39,7 +53,6 @@ export default defineConfig({
     },
     options_ui: {
       page: "settings.html",
-      // Embedded options page; account controls also live in the popup.
       open_in_tab: false,
     },
     content_security_policy: {
@@ -54,7 +67,6 @@ export default defineConfig({
   },
   vite: () => ({
     build: {
-      // Store review rejects bundles that ship debug sources.
       sourcemap: false,
       minify: true,
       target: "chrome120",

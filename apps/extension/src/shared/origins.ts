@@ -1,9 +1,23 @@
 // Origins the production extension may contact.
 // Raw provider TCP never runs in the browser (ADR-0010 / ADR-0005B).
-// Loopback is opt-in for `wxt dev` only — never the store / production default.
+// Set VITE_MOSS_API_ORIGIN at build time for Railway (e.g. https://xxx.up.railway.app).
 
-export const API_ORIGIN = "https://api.mossworkflow.dev";
-export const UPLOAD_ORIGIN = "https://uploads.mossworkflow.dev";
+function stripTrailingSlash(value: string): string {
+  return String(value || "").trim().replace(/\/+$/, "");
+}
+
+const DEFAULT_API = "https://api.mossworkflow.dev";
+const DEFAULT_UPLOAD = "https://uploads.mossworkflow.dev";
+
+export const API_ORIGIN = stripTrailingSlash(
+  import.meta.env.VITE_MOSS_API_ORIGIN || DEFAULT_API,
+);
+
+export const UPLOAD_ORIGIN = stripTrailingSlash(
+  import.meta.env.VITE_MOSS_UPLOAD_ORIGIN ||
+    (import.meta.env.VITE_MOSS_API_ORIGIN ? API_ORIGIN : DEFAULT_UPLOAD),
+);
+
 export const LOCAL_API_ORIGIN = "http://127.0.0.1:8787";
 
 /** True only when VITE_MOSS_USE_LOCAL_API=1 (developer opt-in; never store default). */

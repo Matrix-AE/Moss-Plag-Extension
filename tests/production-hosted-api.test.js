@@ -25,6 +25,7 @@ test("deploy checklist covers hosted API and forbids production raw TCP", () => 
   assert.match(deployDoc, /api\.mossworkflow\.dev/);
   assert.match(deployDoc, /uploads\.mossworkflow\.dev/);
   assert.match(deployDoc, /ALLOW_PUBLIC_MOSS_TCP/);
+  assert.match(deployDoc, /ALLOW_HOSTED_PUBLIC_MOSS_TCP|Railway/i);
   assert.match(deployDoc, /NODE_ENV/);
   assert.match(deployDoc, /encrypted/);
   assert.match(deployDoc, /Chrome Web Store|store/i);
@@ -32,12 +33,17 @@ test("deploy checklist covers hosted API and forbids production raw TCP", () => 
 });
 
 test("production extension defaults to hosted API only", () => {
-  assert.match(origins, /API_ORIGIN = "https:\/\/api\.mossworkflow\.dev"/);
+  assert.match(origins, /api\.mossworkflow\.dev/);
+  assert.match(origins, /VITE_MOSS_API_ORIGIN/);
   assert.match(origins, /USE_LOCAL_API/);
   assert.match(origins, /VITE_MOSS_USE_LOCAL_API/);
   assert.match(apiClient, /resolveApiOrigin/);
   assert.match(apiClient, /USE_LOCAL_API/);
+  assert.match(wxt, /VITE_MOSS_API_ORIGIN/);
   assert.match(wxt, /VITE_MOSS_USE_LOCAL_API/);
   assert.match(wxt, /allowLocalApi/);
   assert.doesNotMatch(checkScript, /127\.0\.0\.1:8787/);
+  assert.ok(fs.existsSync(path.join(root, "Dockerfile")));
+  assert.ok(fs.existsSync(path.join(root, "railway.toml")));
+  assert.ok(fs.existsSync(path.join(root, "docs/engineering/deploy-railway.md")));
 });

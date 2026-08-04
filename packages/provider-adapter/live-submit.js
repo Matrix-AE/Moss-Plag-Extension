@@ -22,7 +22,8 @@ const URL_ALLOW = Object.freeze([
 ]);
 
 function assertPublicMossAllowed({ env = process.env, production = false } = {}) {
-  if (production || env.NODE_ENV === "production") {
+  const hostedOptIn = env.ALLOW_HOSTED_PUBLIC_MOSS_TCP === "1";
+  if ((production || env.NODE_ENV === "production") && !hostedOptIn) {
     const error = Object.assign(new Error("public-raw-tcp forbidden in production"), {
       code: "unencrypted-forbidden",
     });
@@ -30,7 +31,7 @@ function assertPublicMossAllowed({ env = process.env, production = false } = {})
   }
   if (env.ALLOW_PUBLIC_MOSS_TCP !== "1") {
     const error = Object.assign(
-      new Error("Set ALLOW_PUBLIC_MOSS_TCP=1 for local-dev public MOSS TCP"),
+      new Error("Set ALLOW_PUBLIC_MOSS_TCP=1 for public MOSS TCP"),
       { code: "public-tcp-flag-required" },
     );
     throw error;
@@ -301,6 +302,18 @@ async function validateLiveSubmitModule() {
     errors.push("flag-gate");
   } catch (e) {
     if (e.code !== "public-tcp-flag-required") errors.push("flag-code");
+  }
+  try {
+    assertPublicMossAllowed({
+      env: {
+        NODE_ENV: "production",
+        ALLOW_PUBLIC_MOSS_TCP: "1",
+        ALLOW_HOSTED_PUBLIC_MOSS_TCP: "1",
+      },
+      production: true,
+    });
+  } catch {
+    errors.push("hosted-opt-in");
   }
 
   const result = await submitPairToMoss(

@@ -13,6 +13,19 @@ extension talks only to:
 Raw public TCP to `moss.stanford.edu:7690` is **forbidden in production** (ADR-0005B). Local
 `ALLOW_PUBLIC_MOSS_TCP=1` is a developer opt-in only.
 
+## Railway (recommended starter host)
+
+Step-by-step: [`deploy-railway.md`](./deploy-railway.md)
+
+Deploy `apps/api` via the root `Dockerfile`, set:
+
+- `ALLOW_PUBLIC_MOSS_TCP=1`
+- `ALLOW_HOSTED_PUBLIC_MOSS_TCP=1` (required when `NODE_ENV=production` for public MOSS TCP)
+
+Then rebuild the extension with:
+
+`VITE_MOSS_API_ORIGIN=https://your-service.up.railway.app`
+
 ## Preconditions (must be true before DNS goes live)
 
 - [ ] Written commercial Moss rights on file (ADR-0005A / enable checklist)
