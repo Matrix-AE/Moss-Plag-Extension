@@ -14,9 +14,11 @@ const LIVE_SUBMIT_VERSION = 1;
 const PUBLIC_HOST = "moss.stanford.edu";
 const PUBLIC_PORT = 7690;
 
+// Classic public MOSS returns http://moss.stanford.edu/results/... (not https).
 const URL_ALLOW = Object.freeze([
   /^https:\/\/mock\.local\/.+/i,
   /^https:\/\/([a-z0-9.-]+\.)?moss\.stanford\.edu\/.+/i,
+  /^http:\/\/([a-z0-9.-]+\.)?moss\.stanford\.edu\/.+/i,
 ]);
 
 function assertPublicMossAllowed({ env = process.env, production = false } = {}) {

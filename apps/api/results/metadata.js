@@ -11,6 +11,8 @@ const RESULTS_VERSION = 1;
 const URL_ALLOW = Object.freeze([
   /^https:\/\/mock\.local\/.+/i,
   /^https:\/\/([a-z0-9.-]+\.)?moss\.stanford\.edu\/.+/i,
+  // Public MOSS still issues http:// result links.
+  /^http:\/\/([a-z0-9.-]+\.)?moss\.stanford\.edu\/.+/i,
 ]);
 const DEFAULT_ESTIMATE_MS = 14 * 24 * 60 * 60 * 1000;
 
@@ -163,10 +165,13 @@ function createResultStore({
 
 function validateReportUrl(url) {
   const text = String(url || "").trim();
-  if (!/^https:\/\//i.test(text)) return { ok: false, error: "invalid-url" };
+  if (!/^https?:\/\//i.test(text)) return { ok: false, error: "invalid-url" };
   try {
     const u = new URL(text);
     if (u.username || u.password) return { ok: false, error: "invalid-url" };
+    if (u.protocol === "http:" && !/(^|\.)moss\.stanford\.edu$/i.test(u.hostname)) {
+      return { ok: false, error: "invalid-url" };
+    }
     if (!URL_ALLOW.some((re) => re.test(text))) return { ok: false, error: "invalid-url" };
   } catch {
     return { ok: false, error: "invalid-url" };
@@ -232,6 +237,7 @@ function validateResultMetadataModule() {
   if (!store.deleteHistory("v3", { ownerUserId: "u" }).ok) errors.push("delete");
   if (validateReportUrl("http://evil/x").ok) errors.push("http");
   if (!validateReportUrl("https://moss.stanford.edu/results/a").ok) errors.push("moss");
+  if (!validateReportUrl("http://moss.stanford.edu/results/a").ok) errors.push("moss-http");
 
   return { ok: errors.length === 0, errors, version: RESULTS_VERSION };
 }

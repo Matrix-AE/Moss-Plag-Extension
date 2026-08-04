@@ -16,7 +16,11 @@ const PHASES = Object.freeze([
   "completed",
 ]);
 
-const URL_ALLOWLIST = Object.freeze([/^https:\/\/mock\.local\//i, /^https:\/\/[a-z0-9.-]+\.moss\.stanford\.edu\//i]);
+const URL_ALLOWLIST = Object.freeze([
+  /^https:\/\/mock\.local\//i,
+  /^https:\/\/([a-z0-9.-]+\.)?moss\.stanford\.edu\//i,
+  /^http:\/\/([a-z0-9.-]+\.)?moss\.stanford\.edu\//i,
+]);
 
 function classifyFailure({ phase, cause, rawMessage = "" }) {
   const redacted = redact(rawMessage);
