@@ -158,7 +158,7 @@ test("P-RUN-T07 remaining runs are released only when nothing was submitted", ()
 test("P-RUN-T08 popup drives the lifecycle to a result link and releases credit on failure", () => {
   assert.match(workflow, /@moss\/ui\/run-lifecycle/);
   assert.match(workflow, /api-client/);
-  assert.match(workflow, /probeLocalApi|createPairJob|revealJobResult/);
+  assert.match(workflow, /probeApi|probeLocalApi|createPairJob|revealJobResult/);
   assert.match(workflow, /recoverRunState/);
   assert.match(workflow, /shouldReleaseRunCredit/);
   assert.match(workflow, /releaseDemoRun/);
@@ -181,6 +181,12 @@ test("P-RUN-T09 a labelled local demo report page backs the produced link", () =
   assert.match(report, /no similarity measurements/i);
   assert.doesNotMatch(report, /\d+\s*%/, "a simulated report must not invent similarity numbers");
   assert.match(shellDoc, /run-lifecycle|deadline/i);
-  assert.match(localDoc, /127\.0\.0\.1:8787|api:start/i);
-  assert.match(localDoc, /ALLOW_PUBLIC_MOSS_TCP|api:start:live/i);
+  assert.match(shellDoc, /api\.mossworkflow\.dev/);
+  assert.doesNotMatch(shellDoc, /connect-src 'self' https:\/\/api\.mossworkflow\.dev https:\/\/uploads\.mossworkflow\.dev http:\/\/127\.0\.0\.1:8787/);
+  assert.match(localDoc, /deploy-api-mossworkflow|api\.mossworkflow\.dev/i);
+  assert.match(localDoc, /VITE_MOSS_USE_LOCAL_API/);
+  const wxt = fs.readFileSync(path.join(root, "apps/extension/wxt.config.ts"), "utf8");
+  assert.match(wxt, /VITE_MOSS_USE_LOCAL_API/);
+  assert.match(wxt, /allowLocalApi/);
+  assert.doesNotMatch(wxt, /host_permissions:\s*\[API_ORIGIN,\s*UPLOAD_ORIGIN,\s*LOCAL_API_ORIGIN\]/);
 });

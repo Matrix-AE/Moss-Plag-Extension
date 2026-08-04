@@ -1,10 +1,20 @@
 import { defineConfig } from "wxt";
 
-// Origins the extension is allowed to talk to. Nothing else may appear in host_permissions or CSP;
-// raw provider transport stays server-side (ADR-0010). Local loopback is for BYO MOSS testing only.
+// Production / store builds talk only to the hosted relay (ADR-0010).
+// Loopback is opt-in only when VITE_MOSS_USE_LOCAL_API=1 (developer machines).
 const API_ORIGIN = "https://api.mossworkflow.dev/";
 const UPLOAD_ORIGIN = "https://uploads.mossworkflow.dev/";
 const LOCAL_API_ORIGIN = "http://127.0.0.1:8787/";
+
+const allowLocalApi = process.env.VITE_MOSS_USE_LOCAL_API === "1";
+
+const hostPermissions = allowLocalApi
+  ? [API_ORIGIN, UPLOAD_ORIGIN, LOCAL_API_ORIGIN]
+  : [API_ORIGIN, UPLOAD_ORIGIN];
+
+const connectSrc = allowLocalApi
+  ? "script-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; connect-src 'self' https://api.mossworkflow.dev https://uploads.mossworkflow.dev http://127.0.0.1:8787"
+  : "script-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; connect-src 'self' https://api.mossworkflow.dev https://uploads.mossworkflow.dev";
 
 export default defineConfig({
   srcDir: "src",
@@ -22,7 +32,7 @@ export default defineConfig({
     // Every permission maps to a shipped feature; see docs/engineering/extension-shell.md.
     permissions: ["storage", "alarms"],
     optional_permissions: [],
-    host_permissions: [API_ORIGIN, UPLOAD_ORIGIN, LOCAL_API_ORIGIN],
+    host_permissions: hostPermissions,
     action: {
       default_title: "Code Similarity Workflow",
       default_popup: "popup.html",
@@ -33,8 +43,7 @@ export default defineConfig({
       open_in_tab: false,
     },
     content_security_policy: {
-      extension_pages:
-        "script-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; connect-src 'self' https://api.mossworkflow.dev https://uploads.mossworkflow.dev http://127.0.0.1:8787",
+      extension_pages: connectSrc,
     },
     icons: {
       16: "icon/16.png",

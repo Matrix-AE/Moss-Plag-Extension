@@ -11,7 +11,9 @@ npm run api:start          # mock MOSS loopback (default)
 npm run api:start:live     # gated public TCP to moss.stanford.edu:7690
 ```
 
-Listens on `http://127.0.0.1:8787` by default.
+Listens on `http://127.0.0.1:8787` by default for local development.
+
+Production deploy checklist: [`../../docs/engineering/deploy-api-mossworkflow.md`](../../docs/engineering/deploy-api-mossworkflow.md).
 
 | Endpoint | Purpose |
 | --- | --- |

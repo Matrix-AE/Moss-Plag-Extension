@@ -7,7 +7,6 @@ const REQUIRED_PAGES = ["popup.html", "settings.html"];
 const ALLOWED_HOSTS = [
   "https://api.mossworkflow.dev/",
   "https://uploads.mossworkflow.dev/",
-  "http://127.0.0.1:8787/",
 ];
 const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 

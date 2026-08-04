@@ -845,12 +845,15 @@ export function WorkflowApp() {
     }
 
     const useOfflineDemo = Boolean(options.forceOfflineDemo || allowOfflineDemo);
-    let health: Awaited<ReturnType<typeof apiClient.probeLocalApi>> = { ok: false };
+    let health: Awaited<ReturnType<typeof apiClient.probeApi>> = {
+      ok: false,
+      origin: apiClient.resolveApiOrigin(),
+    };
     if (!useOfflineDemo) {
-      health = await apiClient.probeLocalApi();
+      health = await apiClient.probeApi();
       if (!health.ok) {
         setGateMessage(
-          "Local API is not running at http://127.0.0.1:8787. Start it with npm run api:start (mock) or npm run api:start:live (real MOSS), then try again — or use offline demo.",
+          `Hosted API at ${health.origin} is unreachable. Deploy api.mossworkflow.dev (see docs/engineering/deploy-api-mossworkflow.md), then try again — or use offline demo for UI-only testing.`,
         );
         setAllowOfflineDemo(false);
         return;
@@ -945,7 +948,7 @@ export function WorkflowApp() {
       const released = await releaseDemoRun(`failed-create-${Date.now()}`);
       if (released.ok) setEntitlement(released.entitlement);
       setRun(null);
-      setGateMessage("Could not create a job on the local API. Your run was not used.");
+      setGateMessage("Could not create a job on the hosted API. Your run was not used.");
       return;
     }
     const apiJob = created.data["job"] as { jobId?: string } | undefined;
@@ -954,7 +957,7 @@ export function WorkflowApp() {
       const released = await releaseDemoRun(`failed-create-${Date.now()}`);
       if (released.ok) setEntitlement(released.entitlement);
       setRun(null);
-      setGateMessage("Local API returned no job id. Your run was not used.");
+      setGateMessage("Hosted API returned no job id. Your run was not used.");
       return;
     }
 
@@ -1003,7 +1006,7 @@ export function WorkflowApp() {
         phase: "failure",
         failureCode: "credential",
       });
-      setGateMessage("Moss User ID handoff to the local API failed. Your run was released.");
+      setGateMessage("Moss User ID handoff to the hosted API failed. Your run was released.");
       return;
     }
 
@@ -1026,7 +1029,7 @@ export function WorkflowApp() {
           ? { ...prev, phase: "failure", failureCode: "upload", updatedAt: Date.now() }
           : prev,
       );
-      setGateMessage("Upload to the local API failed before MOSS submission. Your run was released.");
+      setGateMessage("Upload to the hosted API failed before MOSS submission. Your run was released.");
       return;
     }
 
@@ -1346,13 +1349,14 @@ export function WorkflowApp() {
           {gate === "portal" ? (
             <div className="portal-cta">
               <p className="status status--notice">
-                Starting a check uploads your two files to the local API and then to MOSS. A live run
+                Starting a check uploads your two files to the hosted API and then to MOSS. A live run
                 uses your Moss User ID and quota. The result link is sensitive — treat it like a
                 password. Reports never auto-open.
               </p>
               {apiMeta?.livePublicTcp ? (
                 <p className="status status--danger">
-                  Local API is in live public MOSS mode (cleartext TCP to Stanford).
+                  API is in live public MOSS mode (cleartext TCP). Production must use the approved
+                  encrypted commercial path instead.
                 </p>
               ) : null}
               <button
@@ -1372,7 +1376,7 @@ export function WorkflowApp() {
                       ? "No runs left"
                       : "Start Pair Check"}
               </button>
-              {gateMessage.includes("Local API is not running") ? (
+              {gateMessage.includes("Hosted API") && gateMessage.includes("unreachable") ? (
                 <button
                   type="button"
                   className="secondary"

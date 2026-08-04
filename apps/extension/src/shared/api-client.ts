@@ -1,18 +1,16 @@
 /**
- * Local loopback API client for the popup Pair Check flow.
- * Talks only to the configured API origin (dev: http://127.0.0.1:8787).
+ * Hosted API client for the popup Pair Check flow.
+ * Production talks only to https://api.mossworkflow.dev.
+ * Loopback is available only in explicit local-dev builds (VITE_MOSS_USE_LOCAL_API=1).
  */
 
-import { API_ORIGIN, isAllowedOrigin } from "./origins";
+import { API_ORIGIN, LOCAL_API_ORIGIN, USE_LOCAL_API, isAllowedOrigin } from "./origins";
 
-export const LOCAL_API_ORIGIN = "http://127.0.0.1:8787";
+export { LOCAL_API_ORIGIN, USE_LOCAL_API };
 
-/** Prefer loopback for unpacked local testing; production builds still list the hosted origin. */
+/** Production / store builds always use the hosted API. */
 export function resolveApiOrigin(): string {
-  // Dev / local testing always prefers the loopback API when origins allow it.
-  if (isAllowedOrigin(`${LOCAL_API_ORIGIN}/health`)) {
-    return LOCAL_API_ORIGIN;
-  }
+  if (USE_LOCAL_API) return LOCAL_API_ORIGIN;
   return API_ORIGIN;
 }
 
@@ -51,15 +49,16 @@ async function apiFetch(
   }
 }
 
-export async function probeLocalApi(origin = resolveApiOrigin()): Promise<{
+export async function probeApi(origin = resolveApiOrigin()): Promise<{
   ok: boolean;
   submitMode?: string;
   livePublicTcp?: boolean;
+  origin: string;
 }> {
   try {
-    if (!isAllowedOrigin(`${origin}/`)) return { ok: false };
+    if (!isAllowedOrigin(`${origin}/`)) return { ok: false, origin };
     const response = await fetch(`${origin}/health`, { method: "GET" });
-    if (!response.ok) return { ok: false };
+    if (!response.ok) return { ok: false, origin };
     const data = (await response.json()) as {
       ok?: boolean;
       submitMode?: string;
@@ -69,11 +68,15 @@ export async function probeLocalApi(origin = resolveApiOrigin()): Promise<{
       ok: Boolean(data.ok),
       submitMode: data.submitMode,
       livePublicTcp: data.livePublicTcp,
+      origin,
     };
   } catch {
-    return { ok: false };
+    return { ok: false, origin };
   }
 }
+
+/** @deprecated Use probeApi — kept as alias during the production cutover. */
+export const probeLocalApi = probeApi;
 
 export async function createPairJob(input: {
   ownerUserId: string;

@@ -45,16 +45,17 @@ injects into third-party pages.
 | --- | --- |
 | `https://api.mossworkflow.dev/` | Job creation, status polling, account operations |
 | `https://uploads.mossworkflow.dev/` | Dedicated upload endpoint for submission payloads |
-| `http://127.0.0.1:8787/` | Local loopback API for BYO MOSS pair checks during development |
 
-All three appear in `host_permissions` and in the CSP `connect-src`. Raw provider transport never happens
-in browser code (ADR-0010); the extension only talks to the hosted relay or the local loopback API.
+Production / store builds declare only these two in `host_permissions` and CSP `connect-src`.
+Raw provider transport never happens in browser code (ADR-0010). Loopback (`http://127.0.0.1:8787`)
+is developer-only via `wxt dev` + `VITE_MOSS_USE_LOCAL_API=1` — never shipped in the store package.
+See [`deploy-api-mossworkflow.md`](./deploy-api-mossworkflow.md).
 
 ## Content Security Policy
 
 ```
 script-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none';
-connect-src 'self' https://api.mossworkflow.dev https://uploads.mossworkflow.dev http://127.0.0.1:8787
+connect-src 'self' https://api.mossworkflow.dev https://uploads.mossworkflow.dev
 ```
 
 Prohibited and checked automatically: inline scripts, inline event handlers, remote script URLs,
