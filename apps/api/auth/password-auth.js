@@ -84,6 +84,57 @@ function createPasswordAuthService({
     });
   }
 
+  /** Forgot password — proves email ownership with an OTP before a new password is accepted. */
+  async function requestPasswordReset({ email }) {
+    const normalized = normalizeEmail(email);
+    if (!isEmail(normalized)) return { ok: false, error: "invalid-email", status: 400 };
+    const user = findUser(normalized);
+    // Registration already reveals whether an email exists, so a precise answer here
+    // costs no extra enumeration and avoids silently swallowing a mistyped address.
+    if (!user) return { ok: false, error: "no-account", status: 404 };
+    return startOtp({ email: normalized, purpose: "reset" });
+  }
+
+  /** Consumes a reset OTP and installs a new password, then revokes every existing session. */
+  function resetPassword({ nonce, code, newPassword }) {
+    if (!nonce || !code) return { ok: false, error: "missing-fields", status: 400 };
+    const entry = otps.get(nonce);
+    if (!entry) return { ok: false, error: "unknown-nonce", status: 400 };
+    if (entry.purpose !== "reset") return { ok: false, error: "wrong-purpose", status: 400 };
+    if (entry.used) return { ok: false, error: "replay", status: 400 };
+    if (entry.expiresAt < now()) return { ok: false, error: "expired", status: 400 };
+    if (entry.codeHash !== sha256(String(code).trim())) {
+      return { ok: false, error: "bad-code", status: 401 };
+    }
+    // Validate before burning the code so a weak password does not force a new email.
+    const passwordResult = validatePassword(newPassword);
+    if (!passwordResult.ok) {
+      return {
+        ok: false,
+        error: "weak-password",
+        status: 400,
+        minLength: MIN_PASSWORD_LEN,
+        failedRules: passwordResult.failedRules,
+      };
+    }
+    const user = findUser(entry.email);
+    if (!user) return { ok: false, error: "user-missing", status: 404 };
+
+    entry.used = true;
+    user.passwordHash = hashPassword(newPassword);
+    user.emailVerified = true;
+    user.verifiedAt = user.verifiedAt || now();
+    user.updatedAt = now();
+    persist();
+    logoutAll(user.userId);
+
+    return {
+      ok: true,
+      email: user.email,
+      message: "Password updated. Sign in with your new password.",
+    };
+  }
+
   async function startOtp({ email, purpose }) {
     const code = String(crypto.randomInt(100000, 999999));
     const nonce = crypto.randomBytes(24).toString("base64url");
@@ -132,6 +183,8 @@ function createPasswordAuthService({
     }
     const entry = otps.get(nonce);
     if (!entry) return { ok: false, error: "unknown-nonce", status: 400 };
+    // A reset code proves email ownership only; it must never mint a session on its own.
+    if (entry.purpose === "reset") return { ok: false, error: "wrong-purpose", status: 400 };
     if (entry.used) return { ok: false, error: "replay", status: 400 };
     if (entry.expiresAt < now()) return { ok: false, error: "expired", status: 400 };
     if (entry.codeHash !== sha256(String(code).trim())) {
@@ -281,6 +334,8 @@ function createPasswordAuthService({
     register,
     login,
     verifyOtp,
+    requestPasswordReset,
+    resetPassword,
     authenticateProvider,
     refresh,
     authorize,

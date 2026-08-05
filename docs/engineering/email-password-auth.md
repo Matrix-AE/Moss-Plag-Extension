@@ -17,6 +17,21 @@ whitespace, and matching confirmation. The API independently enforces the same s
 - A verified Google/Microsoft email links to an existing account with the same normalized email
 - Provider client secrets stay on Railway and never ship in the extension
 
+## Forgot password
+
+`Sign in → Forgot password?` runs a two-step reset:
+
+| Step | Route | Behaviour |
+| --- | --- | --- |
+| Request | `POST /v1/auth/forgot-password` | Emails a 6-digit code. Unknown addresses return `no-account` so a typo is visible rather than silently dropped — registration already reveals whether an email exists, so this adds no new enumeration. |
+| Complete | `POST /v1/auth/reset-password` | Requires the code plus a new password that passes the same strength rules. |
+
+Guarantees worth keeping when this moves to Postgres:
+
+- A reset code has `purpose: "reset"` and is rejected by `verify-otp`, so it can never mint a session by itself.
+- A weak new password is rejected **before** the code is consumed, so users are not forced to request a fresh email.
+- Completing a reset revokes every existing session for that user (`logoutAll`), so a stolen device loses access.
+
 The private admin stats website is a later, separate application — not part of the extension.
 
 ## What you must configure
@@ -36,7 +51,7 @@ Until the domain is verified, Resend will reject sends from that address.
 | --- | --- |
 | `RESEND_API_KEY` | your Resend key |
 | `RESEND_FROM_EMAIL` | `team@matrix-ae.com` |
-| `AUTH_STORE_PATH` | `/data/auth-store.json` (if you attach a Railway volume at `/data`) |
+| `AUTH_STORE_PATH` | `/data/auth-store.json` — **required**, see [durable users](#6-durable-users-on-railway) |
 | `OAUTH_STATE_SECRET` | 32+ random bytes |
 | `GOOGLE_CLIENT_ID` | Google OAuth web client ID |
 | `GOOGLE_CLIENT_SECRET` | Google OAuth web client secret |
@@ -79,15 +94,26 @@ MICROSOFT_TENANT=common
 
 ### 6. Durable users on Railway
 
-JSON on the container disk is wiped on redeploy unless you add a **Railway Volume** mounted at `/data` and set `AUTH_STORE_PATH=/data/auth-store.json`. Postgres comes later with the admin dashboard.
+**Do this before taking any payment.** With no volume attached, the account store is a JSON file on
+the container's ephemeral disk, so every redeploy or restart silently deletes all users — including
+customers who have already paid. There is no backup and no way to recover them.
+
+1. Railway → `@moss/api` service → **Variables** → confirm `AUTH_STORE_PATH=/data/auth-store.json`
+2. Same service → **Settings → Volumes → Add Volume**, mount path `/data`
+3. Redeploy, then register a test account
+4. Redeploy again and confirm that account can still sign in
+
+Step 4 is the part that actually proves it. If the test account is gone after the second deploy, the
+volume is not mounted where the API is reading from. Postgres comes later with the admin dashboard.
 
 ## Test flow
 
 1. API online (`/health` shows `"auth":"email-password-otp"`)
 2. Reload extension
 3. Test email create-account → matching passwords → OTP
-4. Test Google and Microsoft buttons after their Railway variables are configured
-5. Continue (paywall remains simulated until Paddle)
+4. Test `Sign in → Forgot password?` → code → new password → sign in with it
+5. Test Google and Microsoft buttons after their Railway variables are configured
+6. Continue (paywall remains simulated until Paddle)
 
 ## Smoke OTP email only
 

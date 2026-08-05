@@ -65,6 +65,24 @@ function createAuthRouter(auth, oauth = null) {
         return true;
       }
 
+      if (method === "POST" && path === "/v1/auth/forgot-password") {
+        const body = await readJson(req);
+        const result = await auth.requestPasswordReset({ email: body.email });
+        writeJson(res, result.ok ? 200 : result.status || 400, result);
+        return true;
+      }
+
+      if (method === "POST" && path === "/v1/auth/reset-password") {
+        const body = await readJson(req);
+        const result = auth.resetPassword({
+          nonce: body.nonce,
+          code: body.code,
+          newPassword: body.newPassword,
+        });
+        writeJson(res, result.ok ? 200 : result.status || 400, result);
+        return true;
+      }
+
       if (method === "POST" && path === "/v1/auth/verify-otp") {
         const body = await readJson(req);
         const result = auth.verifyOtp({

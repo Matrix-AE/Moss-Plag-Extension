@@ -91,6 +91,13 @@ function mapAuthError(data: Json, fallback: string): string {
     case "owner-required":
     case "not-found":
       return "The hosted API is running an older build without accounts. Redeploy the API, then try again.";
+    case "no-account":
+      return "No account uses that email. Create one instead.";
+    case "unknown-nonce":
+    case "wrong-purpose":
+      return "That reset request is no longer valid. Start again.";
+    case "replay":
+      return "That code was already used. Request a new one.";
     default:
       return fallback;
   }
@@ -147,6 +154,41 @@ export async function verifyAccountOtp(input: {
   }
   await saveAuthSession(session);
   return { ok: true as const, session };
+}
+
+/** Forgot password → OTP emailed to the account address. */
+export async function requestPasswordReset(email: string) {
+  const result = await authFetch("/v1/auth/forgot-password", {
+    body: { email },
+  });
+  if (!result.ok) {
+    return { ok: false as const, error: mapAuthError(result.data, "Could not start a password reset.") };
+  }
+  return {
+    ok: true as const,
+    nonce: String(result.data.nonce || ""),
+    email: String(result.data.email || email),
+    message: String(result.data.message || "Check your email for the code."),
+  };
+}
+
+/** Completes a reset: OTP + new password. Existing sessions are revoked server-side. */
+export async function resetPassword(input: {
+  nonce: string;
+  code: string;
+  newPassword: string;
+}) {
+  const result = await authFetch("/v1/auth/reset-password", {
+    body: { nonce: input.nonce, code: input.code, newPassword: input.newPassword },
+  });
+  if (!result.ok) {
+    return { ok: false as const, error: mapAuthError(result.data, "Could not update the password.") };
+  }
+  return {
+    ok: true as const,
+    email: String(result.data.email || ""),
+    message: String(result.data.message || "Password updated. Sign in with your new password."),
+  };
 }
 
 export type SocialProvider = "google" | "microsoft";

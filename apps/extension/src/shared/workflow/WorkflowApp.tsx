@@ -42,6 +42,8 @@ import {
   loginWithSocialProvider,
   logoutAccount,
   registerAccount,
+  requestPasswordReset,
+  resetPassword,
   sessionToAccount,
   verifyAccountOtp,
   type SocialProvider,
@@ -185,7 +187,9 @@ export function WorkflowApp() {
   const [otpCode, setOtpCode] = useState("");
   const [otpNonce, setOtpNonce] = useState("");
   const [otpPendingEmail, setOtpPendingEmail] = useState("");
-  const [authStep, setAuthStep] = useState<"credentials" | "otp">("credentials");
+  const [authStep, setAuthStep] = useState<"credentials" | "otp" | "forgot" | "reset">(
+    "credentials",
+  );
   const [account, setAccount] = useState<DemoAccount | null>(null);
   const [entitlement, setEntitlement] = useState<DemoEntitlement | null>(null);
   const [mossCredential, setMossCredential] = useState<DemoMossCredential | null>(null);
@@ -644,7 +648,9 @@ export function WorkflowApp() {
       setMossCredential(nextMoss);
       if (nextMoss?.display) setProviderIdMasked(nextMoss.display);
       resolveGate(sessionToAccount(verified.session), nextEntitlement, nextMoss);
-      setGateMessage("Email verified. Purchase unlocks 15 Pair Check runs.");
+      setGateMessage(
+        `Email verified. Choose Pair ($${PLANS.pair.priceUsd}) or Batch ($${PLANS.batch.priceUsd}) to unlock runs.`,
+      );
       return;
     }
 
@@ -669,6 +675,56 @@ export function WorkflowApp() {
     setOtpPendingEmail(started.email);
     setAuthStep("otp");
     setGateMessage(started.message);
+  };
+
+  const onStartPasswordReset = () => {
+    setAuthError("");
+    setPassword("");
+    setConfirmPassword("");
+    setOtpCode("");
+    setOtpNonce("");
+    setAuthStep("forgot");
+  };
+
+  const onRequestResetCode = async () => {
+    setAuthError("");
+    const started = await requestPasswordReset(email);
+    if (!started.ok) {
+      setAuthError(started.error);
+      return;
+    }
+    setOtpNonce(started.nonce);
+    setOtpPendingEmail(started.email);
+    setAuthStep("reset");
+    setGateMessage(started.message);
+  };
+
+  const onSubmitNewPassword = async () => {
+    setAuthError("");
+    if (!createPasswordValid) {
+      setAuthError(
+        password !== confirmPassword
+          ? "Passwords do not match."
+          : "Password does not meet all security requirements.",
+      );
+      return;
+    }
+    const reset = await resetPassword({
+      nonce: otpNonce,
+      code: otpCode,
+      newPassword: password,
+    });
+    if (!reset.ok) {
+      setAuthError(reset.error);
+      return;
+    }
+    setPassword("");
+    setConfirmPassword("");
+    setOtpCode("");
+    setOtpNonce("");
+    setAuthMode("signin");
+    setAuthStep("credentials");
+    setGateMessage(reset.message);
   };
 
   const onSocialSignIn = async (provider: SocialProvider) => {
@@ -698,6 +754,7 @@ export function WorkflowApp() {
     setAuthStep("credentials");
     setOtpCode("");
     setOtpNonce("");
+    setPassword("");
     setConfirmPassword("");
     setAuthError("");
   };
@@ -1452,6 +1509,107 @@ export function WorkflowApp() {
                     onClick={() => void onAuthSubmit()}
                   >
                     {authMode === "create" ? "Create account" : "Sign in"}
+                  </button>
+                  {authMode === "signin" ? (
+                    <button type="button" className="link-button" onClick={onStartPasswordReset}>
+                      Forgot password?
+                    </button>
+                  ) : null}
+                </>
+              ) : authStep === "forgot" ? (
+                <>
+                  <p className="status">
+                    Enter your account email and we will send a 6-digit code to reset the password.
+                  </p>
+                  <label className="stack-field" htmlFor="reset-email">
+                    <span className="type-label">Email</span>
+                    <input
+                      id="reset-email"
+                      type="email"
+                      autoComplete="username"
+                      value={email}
+                      onChange={(event) => setEmail(event.target.value)}
+                      placeholder="you@company.com"
+                    />
+                  </label>
+                  {authError ? (
+                    <p className="status status--danger" role="alert">
+                      {authError}
+                    </p>
+                  ) : null}
+                  <button type="button" className="cta" onClick={() => void onRequestResetCode()}>
+                    Send reset code
+                  </button>
+                  <button type="button" className="secondary" onClick={onAuthBackToCredentials}>
+                    Back
+                  </button>
+                </>
+              ) : authStep === "reset" ? (
+                <>
+                  <p className="status">
+                    Enter the code sent to <strong>{otpPendingEmail || email}</strong> and choose a new
+                    password.
+                  </p>
+                  <label className="stack-field" htmlFor="reset-otp">
+                    <span className="type-label">Verification code</span>
+                    <input
+                      id="reset-otp"
+                      type="text"
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      value={otpCode}
+                      onChange={(event) => setOtpCode(event.target.value.replace(/\D/g, "").slice(0, 6))}
+                      placeholder="123456"
+                    />
+                  </label>
+                  <label className="stack-field" htmlFor="reset-password">
+                    <span className="type-label">New password</span>
+                    <input
+                      id="reset-password"
+                      type="password"
+                      autoComplete="new-password"
+                      value={password}
+                      onChange={(event) => setPassword(event.target.value)}
+                      placeholder="Create a strong password"
+                    />
+                  </label>
+                  <label className="stack-field" htmlFor="reset-confirm-password">
+                    <span className="type-label">Confirm new password</span>
+                    <input
+                      id="reset-confirm-password"
+                      type="password"
+                      autoComplete="new-password"
+                      value={confirmPassword}
+                      onChange={(event) => setConfirmPassword(event.target.value)}
+                      placeholder="Enter password again"
+                    />
+                  </label>
+                  <ul className="password-rules" aria-label="Password requirements">
+                    <li data-valid={passwordChecks.length}>10+ characters</li>
+                    <li data-valid={passwordChecks.uppercase}>Uppercase letter</li>
+                    <li data-valid={passwordChecks.lowercase}>Lowercase letter</li>
+                    <li data-valid={passwordChecks.number}>Number</li>
+                    <li data-valid={passwordChecks.symbol}>Symbol</li>
+                    <li data-valid={passwordChecks.noWhitespace}>No spaces</li>
+                    <li data-valid={confirmPassword.length > 0 && password === confirmPassword}>
+                      Passwords match
+                    </li>
+                  </ul>
+                  {authError ? (
+                    <p className="status status--danger" role="alert">
+                      {authError}
+                    </p>
+                  ) : null}
+                  <button
+                    type="button"
+                    className="cta"
+                    disabled={!createPasswordValid || otpCode.length !== 6}
+                    onClick={() => void onSubmitNewPassword()}
+                  >
+                    Update password
+                  </button>
+                  <button type="button" className="secondary" onClick={onAuthBackToCredentials}>
+                    Cancel
                   </button>
                 </>
               ) : (

@@ -104,3 +104,162 @@ test("auth HTTP routes register and verify-otp", async () => {
   await api.close();
   fs.unlinkSync(storePath);
 });
+
+test("forgot password issues a code that installs a new password", async () => {
+  const storePath = path.join(os.tmpdir(), `moss-auth-reset-${process.pid}-${Date.now()}.json`);
+  const sent = [];
+  const auth = createPasswordAuthService({
+    production: false,
+    storePath,
+    sendOtp: async ({ to, code }) => {
+      sent.push({ to, code });
+      return { ok: true, id: "test" };
+    },
+  });
+
+  const reg = await auth.register({ email: "locked.out@example.com", password: "OldPass123!" });
+  auth.verifyOtp({ nonce: reg.nonce, code: sent[0].code, deviceId: "dev-a" });
+
+  const unknown = await auth.requestPasswordReset({ email: "nobody@example.com" });
+  assert.equal(unknown.ok, false);
+  assert.equal(unknown.error, "no-account");
+
+  const requested = await auth.requestPasswordReset({ email: "locked.out@example.com" });
+  assert.equal(requested.ok, true);
+  const resetCode = sent.at(-1).code;
+
+  // A reset code proves email ownership only — it must never mint a session.
+  const hijack = auth.verifyOtp({ nonce: requested.nonce, code: resetCode, deviceId: "dev-b" });
+  assert.equal(hijack.ok, false);
+  assert.equal(hijack.error, "wrong-purpose");
+
+  const wrongCode = auth.resetPassword({
+    nonce: requested.nonce,
+    code: "000000",
+    newPassword: "BrandNew123!",
+  });
+  assert.equal(wrongCode.ok, false);
+  assert.equal(wrongCode.error, "bad-code");
+
+  // A rejected weak password must not consume the code.
+  const weak = auth.resetPassword({
+    nonce: requested.nonce,
+    code: resetCode,
+    newPassword: "short",
+  });
+  assert.equal(weak.ok, false);
+  assert.equal(weak.error, "weak-password");
+
+  const done = auth.resetPassword({
+    nonce: requested.nonce,
+    code: resetCode,
+    newPassword: "BrandNew123!",
+  });
+  assert.equal(done.ok, true);
+
+  const replay = auth.resetPassword({
+    nonce: requested.nonce,
+    code: resetCode,
+    newPassword: "Another123!",
+  });
+  assert.equal(replay.ok, false);
+  assert.equal(replay.error, "replay");
+
+  const oldPassword = await auth.login({
+    email: "locked.out@example.com",
+    password: "OldPass123!",
+  });
+  assert.equal(oldPassword.ok, false);
+  assert.equal(oldPassword.error, "invalid-credentials");
+
+  const newPassword = await auth.login({
+    email: "locked.out@example.com",
+    password: "BrandNew123!",
+  });
+  assert.equal(newPassword.ok, true);
+
+  fs.unlinkSync(storePath);
+});
+
+test("reset password revokes sessions issued before the change", async () => {
+  const storePath = path.join(os.tmpdir(), `moss-auth-revoke-${process.pid}-${Date.now()}.json`);
+  const sent = [];
+  const auth = createPasswordAuthService({
+    production: false,
+    storePath,
+    sendOtp: async ({ to, code }) => {
+      sent.push({ to, code });
+      return { ok: true, id: "test" };
+    },
+  });
+
+  const reg = await auth.register({ email: "stolen@example.com", password: "OldPass123!" });
+  const session = auth.verifyOtp({ nonce: reg.nonce, code: sent[0].code, deviceId: "dev-a" });
+  assert.equal(auth.authorize({ accessToken: session.accessToken }).ok, true);
+
+  const requested = await auth.requestPasswordReset({ email: "stolen@example.com" });
+  auth.resetPassword({
+    nonce: requested.nonce,
+    code: sent.at(-1).code,
+    newPassword: "BrandNew123!",
+  });
+
+  assert.equal(auth.authorize({ accessToken: session.accessToken }).ok, false);
+
+  fs.unlinkSync(storePath);
+});
+
+test("auth HTTP routes expose forgot-password and reset-password", async () => {
+  const storePath = path.join(os.tmpdir(), `moss-auth-reset-http-${process.pid}-${Date.now()}.json`);
+  const sent = [];
+  const auth = createPasswordAuthService({
+    production: false,
+    storePath,
+    sendOtp: async ({ to, code }) => {
+      sent.push({ to, code });
+      return { ok: true, id: "test" };
+    },
+  });
+  const api = createServer({ host: "127.0.0.1", port: 0, submitMode: "mock-loopback", auth });
+  await new Promise((resolve, reject) => {
+    api.server.listen(0, "127.0.0.1", (err) => (err ? reject(err) : resolve()));
+  });
+  const { port } = api.server.address();
+  const origin = `http://127.0.0.1:${port}`;
+  const post = async (path, body) => {
+    const res = await fetch(`${origin}${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    return { status: res.status, body: await res.json() };
+  };
+
+  await post("/v1/auth/register", { email: "reset@example.com", password: "OldPass123!" });
+
+  const missing = await post("/v1/auth/forgot-password", { email: "ghost@example.com" });
+  assert.equal(missing.status, 404);
+  assert.equal(missing.body.error, "no-account");
+
+  const forgot = await post("/v1/auth/forgot-password", { email: "reset@example.com" });
+  assert.equal(forgot.status, 200);
+  assert.ok(forgot.body.nonce);
+
+  const reset = await post("/v1/auth/reset-password", {
+    nonce: forgot.body.nonce,
+    code: sent.at(-1).code,
+    newPassword: "BrandNew123!",
+  });
+  assert.equal(reset.status, 200);
+  assert.equal(reset.body.ok, true);
+
+  const login = await post("/v1/auth/login", {
+    email: "reset@example.com",
+    password: "BrandNew123!",
+  });
+  assert.equal(login.status, 200);
+  assert.equal(login.body.ok, true);
+
+  await api.close();
+  fs.unlinkSync(storePath);
+});

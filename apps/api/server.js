@@ -9,7 +9,7 @@
  *
  * Endpoints:
  * - GET  /health
- * - POST /v1/auth/register|login|verify-otp|refresh|logout
+ * - POST /v1/auth/register|login|verify-otp|forgot-password|reset-password|refresh|logout
  * - GET  /v1/auth/me
  * - POST /v1/jobs …
  */
