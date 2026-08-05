@@ -48,7 +48,8 @@ export function Settings() {
           Create or sign in from the toolbar popup, then unlock Pair Check ($15 / 15 runs / max 2
           files). After purchase, complete **Connect Moss User ID** (BYO registration instructions,
           then numeric userid only — ADR-0005B). The ID is never used as extension authentication.
-          Local demo login: <code>demo@mossworkflow.test</code> / <code>DemoTest1!</code>.
+          Sign in with email + password; a verification code is emailed from Matrix AE.
+          Paywall purchase is still simulated until Paddle is connected.
         </p>
       </section>
     </main>

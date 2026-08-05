@@ -47,9 +47,9 @@ async function sendResendEmail({
 }
 
 async function sendMagicCodeEmail({ to, code, expiresInMinutes = 10 }) {
-  const subject = "Your Moss Workflow sign-in code";
-  const text = `Your sign-in code is ${code}. It expires in ${expiresInMinutes} minutes. If you did not request this, ignore this email.`;
-  const html = `<p>Your sign-in code is <strong style="font-size:1.25rem;letter-spacing:0.08em">${code}</strong>.</p><p>It expires in ${expiresInMinutes} minutes. If you did not request this, ignore this email.</p>`;
+  const subject = "Your Matrix AE / Moss Workflow verification code";
+  const text = `Your verification code is ${code}. It expires in ${expiresInMinutes} minutes. If you did not request this, ignore this email. — Matrix AE`;
+  const html = `<p>Your verification code is <strong style="font-size:1.25rem;letter-spacing:0.08em">${code}</strong>.</p><p>It expires in ${expiresInMinutes} minutes.</p><p style="color:#666">Matrix AE · Moss Workflow</p>`;
   return sendResendEmail({ to, subject, text, html });
 }
 

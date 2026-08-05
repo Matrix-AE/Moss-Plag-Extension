@@ -3,6 +3,8 @@
 module.exports = {
   jobs: require("./jobs/state-machine"),
   auth: require("./auth"),
+  passwordAuth: require("./auth/password-auth"),
+  oauthBroker: require("./auth/oauth-broker"),
   uploadSessions: require("./uploads/sessions"),
   transferManager: require("./uploads/transfer-manager"),
   sandboxedWorkers: require("./workers/sandboxed"),

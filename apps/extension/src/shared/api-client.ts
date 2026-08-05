@@ -4,6 +4,7 @@
  */
 
 import { API_ORIGIN, isAllowedOrigin } from "./origins";
+import { loadAuthSession, refreshAuthSession } from "./account-session";
 
 /** Production / store builds always use the hosted API origin. */
 export function resolveApiOrigin(): string {
@@ -30,17 +31,26 @@ async function apiFetch(
     return { ok: false, status: 0, data: { error: "origin-forbidden" } };
   }
   try {
-    const init: RequestInit = {
-      method,
-      headers: {
-        "Content-Type": "application/json",
-        "X-Owner-User-Id": ownerUserId,
-      },
+    let session = await loadAuthSession();
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      "X-Owner-User-Id": ownerUserId,
     };
+    if (session?.accessToken) {
+      headers.Authorization = `Bearer ${session.accessToken}`;
+    }
+    const init: RequestInit = { method, headers };
     if (body !== undefined) {
       init.body = JSON.stringify(body);
     }
-    const response = await fetch(`${origin}${path}`, init);
+    let response = await fetch(`${origin}${path}`, init);
+    if (response.status === 401 && session?.refreshToken) {
+      session = await refreshAuthSession();
+      if (session?.accessToken) {
+        headers.Authorization = `Bearer ${session.accessToken}`;
+        response = await fetch(`${origin}${path}`, { ...init, headers });
+      }
+    }
     const data = (await response.json().catch(() => ({}))) as Json;
     return { ok: response.ok && data.ok !== false, status: response.status, data };
   } catch {
@@ -87,6 +97,7 @@ export async function createPairJob(input: {
   ownerUserId: string;
   language: string;
   idempotencyKey: string;
+  mode?: "pair" | "batch";
   settings?: {
     commonMatchThreshold?: number;
     resultCount?: number;
@@ -98,7 +109,7 @@ export async function createPairJob(input: {
     ownerUserId: input.ownerUserId,
     body: {
       language: input.language,
-      mode: "pair",
+      mode: input.mode || "pair",
       idempotencyKey: input.idempotencyKey,
       settings: input.settings || {},
     },
@@ -120,7 +131,7 @@ export async function attachMossCredential(input: {
 export async function uploadPairFiles(input: {
   ownerUserId: string;
   jobId: string;
-  files: Array<{ displayName: string; bytesBase64: string }>;
+  files: Array<{ displayName: string; bytesBase64: string; submissionId?: number }>;
 }) {
   return apiFetch(`/v1/jobs/${encodeURIComponent(input.jobId)}/uploads`, {
     method: "POST",
@@ -129,6 +140,7 @@ export async function uploadPairFiles(input: {
       files: input.files.map((f) => ({
         displayName: f.displayName,
         bytes: f.bytesBase64,
+        submissionId: f.submissionId,
       })),
     },
   });

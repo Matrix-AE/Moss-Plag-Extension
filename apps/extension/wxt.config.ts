@@ -29,17 +29,17 @@ export default defineConfig({
   outDir: ".output",
   manifestVersion: 3,
   manifest: {
-    name: "Code Similarity Workflow",
-    short_name: "Similarity",
+    name: "PairProof — Code Similarity",
+    short_name: "PairProof",
     description:
       "Group student submissions, run a similarity check through a hosted relay, and review results.",
     version: "0.0.0",
     minimum_chrome_version: "120",
-    permissions: ["storage", "alarms"],
+    permissions: ["storage", "alarms", "identity"],
     optional_permissions: [],
     host_permissions: hostPermissions,
     action: {
-      default_title: "Code Similarity Workflow",
+      default_title: "PairProof",
       default_popup: "popup.html",
     },
     options_ui: {

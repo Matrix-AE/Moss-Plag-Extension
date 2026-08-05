@@ -16,26 +16,36 @@ import type { RunState } from "@moss/ui/run-lifecycle";
 import { sendShellMessage } from "../shell-client";
 import type { PersistedState } from "../state-types";
 import {
-  DEMO_LOGIN,
   OFFER,
+  PLAN_LIST,
+  PLANS,
   clearDemoAccount,
   clearDemoMossCredential,
   consumeDemoRun,
-  createDemoAccount,
   deobfuscateMossUserId,
   isEntitled,
   isMossConnected,
-  loadDemoAccount,
   loadDemoEntitlement,
   loadDemoMossCredential,
   purchaseDemoEntitlement,
   releaseDemoRun,
   saveDemoMossCredential,
-  signInDemoAccount,
   type DemoAccount,
   type DemoEntitlement,
   type DemoMossCredential,
+  type PlanId,
 } from "../entitlement-demo";
+import {
+  clearAuthSession,
+  loadAuthSession,
+  loginAccount,
+  loginWithSocialProvider,
+  logoutAccount,
+  registerAccount,
+  sessionToAccount,
+  verifyAccountOtp,
+  type SocialProvider,
+} from "../account-session";
 import * as apiClient from "../api-client";
 import {
   clearResultHistory,
@@ -44,6 +54,14 @@ import {
   rememberResult,
   type ResultHistoryEntry,
 } from "../result-history";
+import {
+  loadThemePreference,
+  nextThemePreference,
+  saveThemePreference,
+  type ThemePreference,
+} from "../theme";
+import { checkPassword, isStrongPassword } from "../password-policy";
+import { GoogleIcon, MicrosoftIcon } from "../social-icons";
 
 type Gate = "loading" | "auth" | "paywall" | "moss-id" | "portal";
 type AuthMode = "signin" | "create";
@@ -125,13 +143,30 @@ function InfoTip({ label, children }: { label: string; children: string }) {
 function BrandMark() {
   return (
     <span className="brand-mark" aria-hidden="true">
-      <svg viewBox="0 0 24 24" width="22" height="22" focusable="false">
+      <svg viewBox="0 0 32 32" width="24" height="24" focusable="false">
         <path
-          d="M7 5h3v14H7zm7 0h3v14h-3z"
-          fill="currentColor"
-          opacity="0.9"
+          d="m13 8-6 8 6 8M19 8l6 8-6 8"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="3"
+          strokeLinecap="round"
+          strokeLinejoin="round"
         />
-        <path d="M5 8h4v2H5zm10 6h4v2h-4z" fill="currentColor" />
+        <path
+          d="m12.5 16.5 2.4 2.4 5-5.8"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.7"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <circle
+          cx="16"
+          cy="16"
+          r="13"
+          fill="currentColor"
+          opacity="0.08"
+        />
       </svg>
     </span>
   );
@@ -144,12 +179,19 @@ export function WorkflowApp() {
   );
   const [gate, setGate] = useState<Gate>("loading");
   const [authMode, setAuthMode] = useState<AuthMode>("signin");
-  const [email, setEmail] = useState<string>(DEMO_LOGIN.email);
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [otpCode, setOtpCode] = useState("");
+  const [otpNonce, setOtpNonce] = useState("");
+  const [otpPendingEmail, setOtpPendingEmail] = useState("");
+  const [authStep, setAuthStep] = useState<"credentials" | "otp">("credentials");
   const [account, setAccount] = useState<DemoAccount | null>(null);
   const [entitlement, setEntitlement] = useState<DemoEntitlement | null>(null);
   const [mossCredential, setMossCredential] = useState<DemoMossCredential | null>(null);
   const [authError, setAuthError] = useState("");
+  const [socialBusy, setSocialBusy] = useState<SocialProvider | null>(null);
+  const [themePreference, setThemePreference] = useState<ThemePreference>("system");
   const [persisted, setPersisted] = useState<PersistedState | null>(null);
   const [note, setNote] = useState("Loading…");
   const [languageQuery, setLanguageQuery] = useState("");
@@ -194,7 +236,10 @@ export function WorkflowApp() {
   const pollInFlightRef = useRef(false);
   const rememberedJobsRef = useRef<Set<string>>(new Set());
 
-  const comparisonMode = "pair" as const;
+  const comparisonMode = entitlement?.mode === "batch" ? ("batch" as const) : ("pair" as const);
+  const maxFilesPerRun = entitlement?.maxFilesPerRun ?? OFFER.maxFilesPerRun;
+  const allowsDirectory = Boolean(entitlement?.allowsDirectory);
+  const planLabel = entitlement?.planId === "batch" ? PLANS.batch.name : PLANS.pair.name;
   const runPhase = run?.phase ?? null;
   const runTerminal = runPhase ? runLifecycle.isTerminalPhase(runPhase) : false;
   const progressPhase = Boolean(run) && !runTerminal;
@@ -210,6 +255,9 @@ export function WorkflowApp() {
     email: mossRegEmail || account?.email || "",
     acknowledged: mossAck,
   });
+  const passwordChecks = useMemo(() => checkPassword(password), [password]);
+  const createPasswordValid =
+    isStrongPassword(password) && confirmPassword.length > 0 && password === confirmPassword;
 
   const directoryMode = useMemo(
     () => settingsMod.deriveDirectoryMode({ groups }),
@@ -231,7 +279,7 @@ export function WorkflowApp() {
       settings: { ...settings, directoryMode: "derived", experimental: false },
       title: settings.reportLabel || "Untitled comparison",
     }),
-    [languageCode, languageConfirmed, groups, baseItems, settings],
+    [comparisonMode, languageCode, languageConfirmed, groups, baseItems, settings],
   );
 
   const preflightResult = useMemo(() => {
@@ -266,12 +314,15 @@ export function WorkflowApp() {
     [draftSnapshot, entitlement],
   );
 
-  const rebuildGroups = useCallback((items: LocalItem[]) => {
-    const accepted = items.filter((item) => item.status === "accepted" || item.status === "base");
-    const nextGroups = grouping.suggestGroups(accepted, { mode: "pair" });
-    setGroups(nextGroups);
-    return nextGroups;
-  }, []);
+  const rebuildGroups = useCallback(
+    (items: LocalItem[], mode: "pair" | "batch" = comparisonMode) => {
+      const accepted = items.filter((item) => item.status === "accepted" || item.status === "base");
+      const nextGroups = grouping.suggestGroups(accepted, { mode });
+      setGroups(nextGroups);
+      return nextGroups;
+    },
+    [comparisonMode],
+  );
 
   const resetConsent = useCallback(() => {
     setOwnership(false);
@@ -296,12 +347,13 @@ export function WorkflowApp() {
   );
 
   const refreshSession = useCallback(async () => {
-    const [nextAccount, nextEntitlement, nextMoss, nextHistory] = await Promise.all([
-      loadDemoAccount(),
+    const [authSession, nextEntitlement, nextMoss, nextHistory] = await Promise.all([
+      loadAuthSession(),
       loadDemoEntitlement(),
       loadDemoMossCredential(),
       loadResultHistory(),
     ]);
+    const nextAccount = authSession ? sessionToAccount(authSession) : null;
     setAccount(nextAccount);
     setEntitlement(nextEntitlement);
     setMossCredential(nextMoss);
@@ -363,10 +415,17 @@ export function WorkflowApp() {
 
   useEffect(() => {
     void (async () => {
+      setThemePreference(await loadThemePreference());
       await refreshSession();
       await refreshState();
     })();
   }, [refreshSession, refreshState]);
+
+  const cycleTheme = () => {
+    const next = nextThemePreference(themePreference);
+    setThemePreference(next);
+    void saveThemePreference(next);
+  };
 
   const stepDemoRun = useCallback(() => {
     setRun((current) => {
@@ -561,17 +620,69 @@ export function WorkflowApp() {
 
   const onAuthSubmit = async () => {
     setAuthError("");
-    const saved =
-      authMode === "create"
-        ? await createDemoAccount(email, password)
-        : await signInDemoAccount(email, password);
-    if (!saved.ok) {
-      setAuthError(saved.error);
+    if (authStep === "otp") {
+      const verified = await verifyAccountOtp({
+        nonce: otpNonce,
+        code: otpCode,
+        email: otpPendingEmail || email,
+      });
+      if (!verified.ok) {
+        setAuthError(verified.error);
+        return;
+      }
+      setAccount(sessionToAccount(verified.session));
+      setPassword("");
+      setOtpCode("");
+      setOtpNonce("");
+      setAuthStep("credentials");
+      setMossRegEmail(verified.session.email);
+      const [nextEntitlement, nextMoss] = await Promise.all([
+        loadDemoEntitlement(),
+        loadDemoMossCredential(),
+      ]);
+      setEntitlement(nextEntitlement);
+      setMossCredential(nextMoss);
+      if (nextMoss?.display) setProviderIdMasked(nextMoss.display);
+      resolveGate(sessionToAccount(verified.session), nextEntitlement, nextMoss);
+      setGateMessage("Email verified. Purchase unlocks 15 Pair Check runs.");
       return;
     }
-    setAccount(saved.account);
-    setPassword("");
-    setMossRegEmail(saved.account.email);
+
+    if (authMode === "create" && !createPasswordValid) {
+      setAuthError(
+        password !== confirmPassword
+          ? "Passwords do not match."
+          : "Password does not meet all security requirements.",
+      );
+      return;
+    }
+
+    const started =
+      authMode === "create"
+        ? await registerAccount(email, password)
+        : await loginAccount(email, password);
+    if (!started.ok) {
+      setAuthError(started.error);
+      return;
+    }
+    setOtpNonce(started.nonce);
+    setOtpPendingEmail(started.email);
+    setAuthStep("otp");
+    setGateMessage(started.message);
+  };
+
+  const onSocialSignIn = async (provider: SocialProvider) => {
+    setAuthError("");
+    setSocialBusy(provider);
+    const signedIn = await loginWithSocialProvider(provider);
+    setSocialBusy(null);
+    if (!signedIn.ok) {
+      setAuthError(signedIn.error);
+      return;
+    }
+    const nextAccount = sessionToAccount(signedIn.session);
+    setAccount(nextAccount);
+    setMossRegEmail(signedIn.session.email);
     const [nextEntitlement, nextMoss] = await Promise.all([
       loadDemoEntitlement(),
       loadDemoMossCredential(),
@@ -579,31 +690,32 @@ export function WorkflowApp() {
     setEntitlement(nextEntitlement);
     setMossCredential(nextMoss);
     if (nextMoss?.display) setProviderIdMasked(nextMoss.display);
-    resolveGate(saved.account, nextEntitlement, nextMoss);
-    const nextGate = mossId.resolveOnboardingGate({
-      account: saved.account,
-      entitled: isEntitled(nextEntitlement),
-      mossConnected: isMossConnected(nextMoss),
-    });
-    setGateMessage(
-      nextGate === "portal"
-        ? "Account ready. Pair Check is unlocked."
-        : nextGate === "moss-id"
-          ? "Purchase complete path: connect your Moss User ID before Pair Check."
-          : "Account ready. Purchase unlocks 15 Pair Check runs.",
-    );
+    resolveGate(nextAccount, nextEntitlement, nextMoss);
+    setGateMessage(`Signed in with ${provider === "google" ? "Google" : "Microsoft"}.`);
   };
 
-  const onPurchase = async () => {
-    const next = await purchaseDemoEntitlement();
+  const onAuthBackToCredentials = () => {
+    setAuthStep("credentials");
+    setOtpCode("");
+    setOtpNonce("");
+    setConfirmPassword("");
+    setAuthError("");
+  };
+
+  const onPurchase = async (planId: PlanId) => {
+    const next = await purchaseDemoEntitlement(planId);
     setEntitlement(next);
+    setSourceItems([]);
+    setSourceFiles([]);
+    setGroups([]);
     setMossIdStep("register");
     setMossAck(false);
     setMossIdError("");
     if (!mossRegEmail && account?.email) setMossRegEmail(account.email);
     setGate("moss-id");
+    const plan = PLANS[planId];
     setGateMessage(
-      `Demo entitlement active — ${next.remaining} of ${next.total} runs. Connect your Moss User ID next. Files are not uploaded yet.`,
+      `${plan.name} unlocked — ${next.remaining} of ${next.total} runs. Connect your Moss User ID next. Files are not uploaded yet.`,
     );
   };
 
@@ -626,7 +738,7 @@ export function WorkflowApp() {
     setProviderIdError("");
     setGate("portal");
     setGateMessage(
-      `Moss User ID connected (${saved.credential.display}). Pair Check is ready — ${runsLeft || entitlement?.remaining || OFFER.runs} runs available.`,
+      `Moss User ID connected (${saved.credential.display}). ${planLabel} is ready — ${runsLeft || entitlement?.remaining || OFFER.runs} runs available.`,
     );
   };
 
@@ -643,13 +755,20 @@ export function WorkflowApp() {
   };
 
   const onSignOut = async () => {
+    await logoutAccount();
     await clearDemoAccount();
+    await clearAuthSession();
     setAccount(null);
     setEntitlement(null);
     setMossCredential(null);
     setProviderIdMasked("");
     setMossAck(false);
     setMossIdStep("register");
+    setAuthStep("credentials");
+    setOtpCode("");
+    setOtpNonce("");
+    setPassword("");
+    setConfirmPassword("");
     await discard();
     setGate("auth");
     setGateMessage("Signed out. Sign in again to continue.");
@@ -686,9 +805,13 @@ export function WorkflowApp() {
       setGate("moss-id");
       return;
     }
-    const room = OFFER.maxFilesPerRun - sourceItems.length;
+    const room = maxFilesPerRun - sourceItems.length;
     if (room <= 0) {
-      setNote(`Pair Check allows max ${OFFER.maxFilesPerRun} files per run.`);
+      setNote(
+        comparisonMode === "batch"
+          ? `Batch allows max ${maxFilesPerRun} files per run.`
+          : `Pair Check allows max ${maxFilesPerRun} files per run.`,
+      );
       return;
     }
     const capped = files.slice(0, room);
@@ -714,7 +837,7 @@ export function WorkflowApp() {
       });
     }
     accepted = accepted.slice(0, room);
-    const nextSources = [...sourceItems, ...accepted].slice(0, OFFER.maxFilesPerRun);
+    const nextSources = [...sourceItems, ...accepted].slice(0, maxFilesPerRun);
     const matchedFiles: File[] = [];
     for (const item of accepted) {
       const byKey = capped.find((entry) => {
@@ -729,8 +852,8 @@ export function WorkflowApp() {
       if (byKey) matchedFiles.push(byKey);
     }
     setSourceItems(nextSources);
-    setSourceFiles((prev) => [...prev, ...matchedFiles].slice(0, OFFER.maxFilesPerRun));
-    const nextGroups = rebuildGroups(nextSources);
+    setSourceFiles((prev) => [...prev, ...matchedFiles].slice(0, maxFilesPerRun));
+    rebuildGroups(nextSources, comparisonMode);
     const suggestion = language.suggestLanguage(
       nextSources.map((item) => ({ displayName: item.displayName })),
       capsPayload,
@@ -743,11 +866,11 @@ export function WorkflowApp() {
       setLanguageHint(suggestion.guidance);
     }
     setNote(
-      `Added ${accepted.length} local file(s) (${nextSources.length}/${OFFER.maxFilesPerRun}). Nothing uploaded.`,
+      `Added ${accepted.length} local file(s) (${nextSources.length}/${maxFilesPerRun}). Nothing uploaded.`,
     );
     resetConsent();
-    if (files.length > capped.length || nextSources.length >= OFFER.maxFilesPerRun) {
-      setGateMessage(`Max ${OFFER.maxFilesPerRun} files per run for this offer.`);
+    if (files.length > capped.length || nextSources.length >= maxFilesPerRun) {
+      setGateMessage(`Max ${maxFilesPerRun} files per run for this offer.`);
     }
   };
 
@@ -808,7 +931,7 @@ export function WorkflowApp() {
       return;
     }
     if (!mossConnected || !mossCredential) {
-      setGateMessage("Connect Moss ID before starting a Pair Check.");
+      setGateMessage("Connect Moss ID before starting a run.");
       setGate("moss-id");
       return;
     }
@@ -816,12 +939,22 @@ export function WorkflowApp() {
       setGateMessage("Confirm a language from capabilities before starting.");
       return;
     }
-    if (sourceItems.length !== OFFER.maxFilesPerRun || groups.length !== 2) {
-      setGateMessage(`Pair Check needs exactly ${OFFER.maxFilesPerRun} files (two submissions).`);
+    const filledGroups = groups.filter((group) => Array.isArray(group.files) && group.files.length > 0);
+    if (comparisonMode === "pair") {
+      if (sourceItems.length !== maxFilesPerRun || filledGroups.length !== 2) {
+        setGateMessage(`Pair Check needs exactly ${maxFilesPerRun} files (two submissions).`);
+        return;
+      }
+    } else if (sourceItems.length < 2 || filledGroups.length < 2) {
+      setGateMessage("Batch needs at least two submissions (multi-file or folder selection).");
       return;
     }
-    if (sourceFiles.length !== OFFER.maxFilesPerRun) {
-      setGateMessage("Reselect both files in this session before starting — file bytes are not kept after restart.");
+    if (sourceFiles.length !== sourceItems.length) {
+      setGateMessage(
+        comparisonMode === "pair"
+          ? "Reselect both files in this session before starting — file bytes are not kept after restart."
+          : "Reselect files in this session before starting — file bytes are not kept after restart.",
+      );
       return;
     }
     if (!ownership || !sensitiveLink) {
@@ -938,15 +1071,17 @@ export function WorkflowApp() {
     setLinkForgotten(false);
     syncedRunRef.current = "";
 
-    const ownerUserId = account?.email || "local-owner";
+    const authSession = await loadAuthSession();
+    const ownerUserId = authSession?.userId || account?.email || "local-owner";
     const created = await apiClient.createPairJob({
       ownerUserId,
       language: languageCode,
       idempotencyKey,
+      mode: comparisonMode,
       settings: {
         commonMatchThreshold: settings.commonMatchThreshold,
         resultCount: settings.resultCount,
-        reportLabel: settings.reportLabel || "pair-check",
+        reportLabel: settings.reportLabel || (comparisonMode === "batch" ? "batch-check" : "pair-check"),
       },
     });
     if (!created.ok) {
@@ -1015,11 +1150,23 @@ export function WorkflowApp() {
       return;
     }
 
+    const submissionByKey = new Map<string, number>();
+    filledGroups.forEach((group, groupIndex) => {
+      for (const file of group.files || []) {
+        const key = String(file.key || `${file.displayName}::${file.size || file.bytes || 0}`);
+        submissionByKey.set(key, groupIndex + 1);
+      }
+    });
     const encoded = await Promise.all(
-      sourceFiles.map(async (file, index) => ({
-        displayName: sourceItems[index]?.displayName || file.name,
-        bytesBase64: await apiClient.fileToBase64(file),
-      })),
+      sourceFiles.map(async (file, index) => {
+        const item = sourceItems[index];
+        const key = String(item?.key || `${item?.displayName || file.name}::${file.size}`);
+        return {
+          displayName: item?.displayName || file.name,
+          bytesBase64: await apiClient.fileToBase64(file),
+          submissionId: submissionByKey.get(key) || index + 1,
+        };
+      }),
     );
     const uploaded = await apiClient.uploadPairFiles({
       ownerUserId,
@@ -1136,7 +1283,7 @@ export function WorkflowApp() {
     gate === "auth"
       ? "Account required"
       : gate === "paywall"
-        ? "Unlock Pair Check"
+        ? "Choose a package"
         : gate === "moss-id"
           ? "Connect Moss User ID"
           : runView && !runView.isTerminal
@@ -1149,14 +1296,14 @@ export function WorkflowApp() {
     gate === "auth"
       ? "Create or sign in to continue. Files stay on this device until you purchase and consent."
       : gate === "paywall"
-        ? `$${OFFER.priceUsd} unlocks ${OFFER.runs} runs · max ${OFFER.maxFilesPerRun} files each. Nothing is uploaded at checkout.`
+        ? `Pair $${PLANS.pair.priceUsd} · ${PLANS.pair.runs} runs (2 files) · Batch $${PLANS.batch.priceUsd} · ${PLANS.batch.runs} runs (multi-file or folder). Nothing uploaded at checkout.`
         : gate === "moss-id"
           ? "After purchase, register with Moss yourself and paste only the numeric userid. We never send that email for you."
           : runView && !runView.isTerminal
             ? runView.detail
             : runsLeft < 1
               ? "Local demo entitlement is exhausted. Billing API will replace this simulate-purchase path."
-              : `${runsLeft} of ${entitlement?.total ?? OFFER.runs} runs left · Pair Check · max ${OFFER.maxFilesPerRun} files`;
+              : `${runsLeft} of ${entitlement?.total ?? OFFER.runs} runs left · ${planLabel} · max ${maxFilesPerRun} files`;
 
   if (gate === "loading") {
     return (
@@ -1167,14 +1314,23 @@ export function WorkflowApp() {
   }
 
   return (
-    <div className="shell shell--popup">
+    <div className="shell shell--popup" data-gate={gate}>
       <header className="popup-header" role="banner">
         <div className="brand-row">
           <BrandMark />
-          <div>
-            <h1>Code Similarity</h1>
-            <p className="brand-kicker">PAIR CHECK WORKFLOW</p>
+          <div className="brand-copy">
+            <h1>PairProof</h1>
+            <p className="brand-kicker">SIMILARITY, VERIFIED</p>
           </div>
+          <button
+            type="button"
+            className="theme-toggle"
+            onClick={cycleTheme}
+            title={`Theme: ${themePreference}. Click for next mode.`}
+            aria-label={`Theme: ${themePreference}. Change theme.`}
+          >
+            {themePreference === "dark" ? "☾" : themePreference === "light" ? "☀" : "◐"}
+          </button>
         </div>
       </header>
 
@@ -1190,75 +1346,177 @@ export function WorkflowApp() {
 
           {gate === "auth" ? (
             <div className="auth-panel">
-              <div className="segmented" role="tablist" aria-label="Account mode">
-                <button
-                  type="button"
-                  className={authMode === "create" ? "segmented__chip is-active" : "segmented__chip"}
-                  onClick={() => setAuthMode("create")}
-                >
-                  Create account
-                </button>
-                <button
-                  type="button"
-                  className={authMode === "signin" ? "segmented__chip is-active" : "segmented__chip"}
-                  onClick={() => setAuthMode("signin")}
-                >
-                  Sign in
-                </button>
-              </div>
-              <label className="stack-field" htmlFor="account-email">
-                <span className="type-label">Email</span>
-                <input
-                  id="account-email"
-                  type="email"
-                  autoComplete="username"
-                  value={email}
-                  onChange={(event) => setEmail(event.target.value)}
-                />
-              </label>
-              <label className="stack-field" htmlFor="account-password">
-                <span className="type-label">Password</span>
-                <input
-                  id="account-password"
-                  type="password"
-                  autoComplete={authMode === "create" ? "new-password" : "current-password"}
-                  value={password}
-                  onChange={(event) => setPassword(event.target.value)}
-                />
-              </label>
-              {authError ? (
-                <p className="status status--danger" role="alert">
-                  {authError}
-                </p>
+              {authStep === "credentials" ? (
+                <>
+                  <div className="social-auth">
+                    <button
+                      type="button"
+                      className="social-auth__button"
+                      disabled={socialBusy !== null}
+                      onClick={() => void onSocialSignIn("google")}
+                    >
+                      <GoogleIcon />
+                      {socialBusy === "google" ? "Connecting…" : "Google"}
+                    </button>
+                    <button
+                      type="button"
+                      className="social-auth__button"
+                      disabled={socialBusy !== null}
+                      onClick={() => void onSocialSignIn("microsoft")}
+                    >
+                      <MicrosoftIcon />
+                      {socialBusy === "microsoft" ? "Connecting…" : "Outlook"}
+                    </button>
+                  </div>
+                  <div className="auth-divider">
+                    <span>or use email</span>
+                  </div>
+                  <div className="segmented" role="tablist" aria-label="Account mode">
+                    <button
+                      type="button"
+                      className={authMode === "create" ? "segmented__chip is-active" : "segmented__chip"}
+                      onClick={() => setAuthMode("create")}
+                    >
+                      Create account
+                    </button>
+                    <button
+                      type="button"
+                      className={authMode === "signin" ? "segmented__chip is-active" : "segmented__chip"}
+                      onClick={() => setAuthMode("signin")}
+                    >
+                      Sign in
+                    </button>
+                  </div>
+                  <label className="stack-field" htmlFor="account-email">
+                    <span className="type-label">Email</span>
+                    <input
+                      id="account-email"
+                      type="email"
+                      autoComplete="username"
+                      value={email}
+                      onChange={(event) => setEmail(event.target.value)}
+                      placeholder="you@company.com"
+                    />
+                  </label>
+                  <label className="stack-field" htmlFor="account-password">
+                    <span className="type-label">Password</span>
+                    <input
+                      id="account-password"
+                      type="password"
+                      autoComplete={authMode === "create" ? "new-password" : "current-password"}
+                      value={password}
+                      onChange={(event) => setPassword(event.target.value)}
+                      placeholder={authMode === "create" ? "Create a strong password" : "Your password"}
+                    />
+                  </label>
+                  {authMode === "create" ? (
+                    <>
+                      <label className="stack-field" htmlFor="account-confirm-password">
+                        <span className="type-label">Confirm password</span>
+                        <input
+                          id="account-confirm-password"
+                          type="password"
+                          autoComplete="new-password"
+                          value={confirmPassword}
+                          onChange={(event) => setConfirmPassword(event.target.value)}
+                          placeholder="Enter password again"
+                        />
+                      </label>
+                      <ul className="password-rules" aria-label="Password requirements">
+                        <li data-valid={passwordChecks.length}>10+ characters</li>
+                        <li data-valid={passwordChecks.uppercase}>Uppercase letter</li>
+                        <li data-valid={passwordChecks.lowercase}>Lowercase letter</li>
+                        <li data-valid={passwordChecks.number}>Number</li>
+                        <li data-valid={passwordChecks.symbol}>Symbol</li>
+                        <li data-valid={passwordChecks.noWhitespace}>No spaces</li>
+                        <li data-valid={confirmPassword.length > 0 && password === confirmPassword}>
+                          Passwords match
+                        </li>
+                      </ul>
+                    </>
+                  ) : null}
+                  {authError ? (
+                    <p className="status status--danger" role="alert">
+                      {authError}
+                    </p>
+                  ) : (
+                    <p className="status">
+                      We email a one-time code from Matrix AE to confirm your account. Google and Outlook
+                      connect come next.
+                    </p>
+                  )}
+                  <button
+                    type="button"
+                    className="cta"
+                    disabled={authMode === "create" && !createPasswordValid}
+                    onClick={() => void onAuthSubmit()}
+                  >
+                    {authMode === "create" ? "Create account" : "Sign in"}
+                  </button>
+                </>
               ) : (
-                <p className="status">
-                  Demo account only — credentials stay on this device. Try{" "}
-                  <code>{DEMO_LOGIN.email}</code> / <code>{DEMO_LOGIN.password}</code>.
-                </p>
+                <>
+                  <p className="status">
+                    Enter the 6-digit code sent to <strong>{otpPendingEmail || email}</strong>.
+                  </p>
+                  <label className="stack-field" htmlFor="account-otp">
+                    <span className="type-label">Verification code</span>
+                    <input
+                      id="account-otp"
+                      type="text"
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      value={otpCode}
+                      onChange={(event) => setOtpCode(event.target.value.replace(/\D/g, "").slice(0, 6))}
+                      placeholder="123456"
+                    />
+                  </label>
+                  {authError ? (
+                    <p className="status status--danger" role="alert">
+                      {authError}
+                    </p>
+                  ) : null}
+                  <button type="button" className="cta" onClick={() => void onAuthSubmit()}>
+                    Verify email
+                  </button>
+                  <button type="button" className="secondary" onClick={onAuthBackToCredentials}>
+                    Back
+                  </button>
+                </>
               )}
-              <button type="button" className="cta" onClick={() => void onAuthSubmit()}>
-                {authMode === "create" ? "Create account" : "Sign in"}
-              </button>
             </div>
           ) : null}
 
           {gate === "paywall" ? (
             <div className="paywall-panel">
-              <ul className="offer-list">
-                <li>
-                  <strong>${OFFER.priceUsd}</strong> one-time personal unlock
-                </li>
-                <li>
-                  <strong>{OFFER.runs}</strong> hosted similarity runs
-                </li>
-                <li>
-                  Max <strong>{OFFER.maxFilesPerRun}</strong> files per run (Pair Check)
-                </li>
-              </ul>
+              <div className="plan-grid">
+                {PLAN_LIST.map((plan) => (
+                  <article key={plan.id} className="plan-card" data-plan={plan.id}>
+                    <h3>{plan.name}</h3>
+                    <p className="plan-price">
+                      <strong>${plan.priceUsd}</strong>
+                      <span> one-time</span>
+                    </p>
+                    <ul className="offer-list">
+                      <li>
+                        <strong>{plan.runs}</strong> hosted similarity runs
+                      </li>
+                      <li>{plan.blurb}</li>
+                      <li>
+                        Max <strong>{plan.maxFilesPerRun}</strong> files per run
+                      </li>
+                    </ul>
+                    <button
+                      type="button"
+                      className={plan.id === "batch" ? "cta" : "secondary"}
+                      onClick={() => void onPurchase(plan.id)}
+                    >
+                      Unlock {plan.name} · ${plan.priceUsd}
+                    </button>
+                  </article>
+                ))}
+              </div>
               <p className="status">Files have not been uploaded yet.</p>
-              <button type="button" className="cta" onClick={() => void onPurchase()}>
-                Unlock {OFFER.runs} runs · ${OFFER.priceUsd}
-              </button>
               <p className="status">
                 Simulated purchase for local demo — no payment-processor secrets, no live charge.
               </p>
@@ -1379,7 +1637,9 @@ export function WorkflowApp() {
                     ? "Connect Moss ID"
                     : runsLeft < 1
                       ? "No runs left"
-                      : "Start Pair Check"}
+                      : comparisonMode === "batch"
+                        ? "Start Batch Check"
+                        : "Start Pair Check"}
               </button>
               {gateMessage.includes("Hosted API") && gateMessage.includes("unreachable") ? (
                 <button
@@ -1588,12 +1848,18 @@ export function WorkflowApp() {
           <>
             <section className="card controls-card" aria-labelledby="controls-heading">
               <div className="row section-head">
-                <h2 id="controls-heading">Pair Check</h2>
-                <InfoTip label="About Pair Check">
-                  This offer compares exactly two files per run. Batch mode stays unavailable until a larger entitlement ships.
+                <h2 id="controls-heading">{comparisonMode === "batch" ? "Batch Check" : "Pair Check"}</h2>
+                <InfoTip label={comparisonMode === "batch" ? "About Batch Check" : "About Pair Check"}>
+                  {comparisonMode === "batch"
+                    ? "Batch compares multiple files or folder/directory selections in one run. Pair stays limited to two files."
+                    : "This offer compares exactly two files per run. Upgrade to Batch for multi-file or folder selection."}
                 </InfoTip>
               </div>
-              <p className="status">Mode locked to Pair Check · max {OFFER.maxFilesPerRun} files.</p>
+              <p className="status">
+                {comparisonMode === "batch"
+                  ? `Batch mode · multi-file or folder · max ${maxFilesPerRun} files.`
+                  : `Mode locked to Pair Check · max ${maxFilesPerRun} files.`}
+              </p>
 
               <label className="stack-field" htmlFor="language-search">
                 <span className="type-label">Search languages</span>
@@ -1635,29 +1901,67 @@ export function WorkflowApp() {
               </div>
 
               <div className="file-pickers">
-                <label className="file-button">
-                  File 1
-                  <input
-                    type="file"
-                    aria-label="Choose first file"
-                    onChange={(event) => {
-                      onSourceFiles(fileListFromInput(event));
-                      event.target.value = "";
-                    }}
-                  />
-                </label>
-                <label className="file-button">
-                  File 2
-                  <input
-                    type="file"
-                    aria-label="Choose second file"
-                    disabled={sourceItems.length >= OFFER.maxFilesPerRun}
-                    onChange={(event) => {
-                      onSourceFiles(fileListFromInput(event));
-                      event.target.value = "";
-                    }}
-                  />
-                </label>
+                {comparisonMode === "pair" ? (
+                  <>
+                    <label className="file-button">
+                      File 1
+                      <input
+                        type="file"
+                        aria-label="Choose first file"
+                        onChange={(event) => {
+                          onSourceFiles(fileListFromInput(event));
+                          event.target.value = "";
+                        }}
+                      />
+                    </label>
+                    <label className="file-button">
+                      File 2
+                      <input
+                        type="file"
+                        aria-label="Choose second file"
+                        disabled={sourceItems.length >= maxFilesPerRun}
+                        onChange={(event) => {
+                          onSourceFiles(fileListFromInput(event));
+                          event.target.value = "";
+                        }}
+                      />
+                    </label>
+                  </>
+                ) : (
+                  <>
+                    <label className="file-button">
+                      Multi-file
+                      <input
+                        type="file"
+                        multiple
+                        aria-label="Choose multiple files"
+                        disabled={sourceItems.length >= maxFilesPerRun}
+                        onChange={(event) => {
+                          onSourceFiles(fileListFromInput(event));
+                          event.target.value = "";
+                        }}
+                      />
+                    </label>
+                    {allowsDirectory ? (
+                      <label className="file-button">
+                        Folder
+                        <input
+                          type="file"
+                          multiple
+                          aria-label="Choose a folder or directory"
+                          disabled={sourceItems.length >= maxFilesPerRun}
+                          ref={(node) => {
+                            if (node) node.setAttribute("webkitdirectory", "");
+                          }}
+                          onChange={(event) => {
+                            onSourceFiles(fileListFromInput(event));
+                            event.target.value = "";
+                          }}
+                        />
+                      </label>
+                    ) : null}
+                  </>
+                )}
               </div>
               <ul className="file-list" aria-label="Selected source files">
                 {sourceItems.map((item, index) => (

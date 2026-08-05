@@ -6,7 +6,7 @@ const path = require("node:path");
 const zlib = require("node:zlib");
 
 const SIZES = [16, 32, 48, 128];
-const BACKGROUND = [47, 91, 234, 255];
+const BACKGROUND = [99, 102, 241, 255];
 const GLYPH = [255, 255, 255, 255];
 
 function crc32(buffer) {
@@ -29,11 +29,20 @@ function chunk(type, data) {
   return Buffer.concat([length, body, crc]);
 }
 
-// Two offset bars: readable at 16px and unmistakably "compare two things".
+// Linked code brackets + check: PairProof's "comparison verified" mark.
 function pixelAt(size, x, y) {
   const unit = size / 16;
-  const inBar = (left, top, width, height) =>
-    x >= left * unit && x < (left + width) * unit && y >= top * unit && y < (top + height) * unit;
+  const px = (x + 0.5) / unit;
+  const py = (y + 0.5) / unit;
+  const nearLine = (x1, y1, x2, y2, width = 0.72) => {
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    const lengthSquared = dx * dx + dy * dy;
+    const t = Math.max(0, Math.min(1, ((px - x1) * dx + (py - y1) * dy) / lengthSquared));
+    const cx = x1 + t * dx;
+    const cy = y1 + t * dy;
+    return Math.hypot(px - cx, py - cy) <= width;
+  };
   const radius = size * 0.12;
   const corner =
     (x < radius && y < radius && (x - radius) ** 2 + (y - radius) ** 2 > radius ** 2) ||
@@ -46,7 +55,14 @@ function pixelAt(size, x, y) {
   if (corner) {
     return [0, 0, 0, 0];
   }
-  if (inBar(3, 4, 6, 2) || inBar(3, 7, 4, 2) || inBar(7, 10, 6, 2)) {
+  if (
+    nearLine(6.5, 3.5, 3, 8) ||
+    nearLine(3, 8, 6.5, 12.5) ||
+    nearLine(9.5, 3.5, 13, 8) ||
+    nearLine(13, 8, 9.5, 12.5) ||
+    nearLine(6.4, 8.2, 7.8, 9.7, 0.6) ||
+    nearLine(7.8, 9.7, 10.8, 6.1, 0.6)
+  ) {
     return GLYPH;
   }
   return BACKGROUND;

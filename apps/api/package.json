@@ -8,6 +8,8 @@
     ".": "./index.js",
     "./jobs": "./jobs/state-machine.js",
     "./auth": "./auth/index.js",
+    "./auth/password": "./auth/password-auth.js",
+    "./auth/oauth": "./auth/oauth-broker.js",
     "./uploads/sessions": "./uploads/sessions.js",
     "./uploads/transfer": "./uploads/transfer-manager.js",
     "./intake/ingest": "./intake/ingest.js",

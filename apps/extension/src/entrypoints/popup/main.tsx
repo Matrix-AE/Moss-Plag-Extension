@@ -6,8 +6,9 @@ import "@moss/ui/typography.css";
 import "@moss/ui/interaction.css";
 import "../../styles/base.css";
 import { Popup } from "./Popup";
+import { applyTheme, loadThemePreference } from "../../shared/theme";
 
-document.documentElement.setAttribute("data-theme", "dark");
+void loadThemePreference().then(applyTheme);
 
 const container = document.getElementById("root");
 if (!container) {

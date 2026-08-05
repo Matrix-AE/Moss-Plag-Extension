@@ -22,16 +22,11 @@ npm run zip:extension
 Unpacked output: `apps/extension/.output/chrome-mv3`  
 Store zip: under `apps/extension/.output/` (see `zip:extension`).
 
-## Deterministic demo login
+## Account login
 
-A fixed local demo account is seeded into `chrome.storage.local` on popup load:
-
-| Field | Value |
-| --- | --- |
-| Email / username | `demo@mossworkflow.test` |
-| Password | `DemoTest1!` |
-
-Use **Sign in** with those credentials. Create-account also works for other local-only emails (password ≥ 6 characters). Demo auth never leaves the device.
+Use a real inbox. Create account requires a strong password entered twice, then a six-digit OTP
+from `team@matrix-ae.com`. Google and Microsoft buttons require their OAuth variables on Railway;
+see [`email-password-auth.md`](./email-password-auth.md).
 
 ## Load in Chrome / Edge (dev verify)
 
@@ -46,13 +41,13 @@ Use **Sign in** with those credentials. Create-account also works for other loca
 
 | Surface | Verify |
 | --- | --- |
-| Popup (~320×580, scroll inside) | Sign in with demo credentials → paywall ($15 / 15 runs / max 2 files, no upload yet) → **Connect Moss User ID** (enter registration email, see exact `registeruser` / `mail …` body, ack, paste numeric ID e.g. `936770554`) → Pair Check portal (language, two file pickers, Advanced options, Account / masked provider ID, preflight, consents, Start Pair Check) |
+| Popup (~380×580, scroll inside) | Email/password + OTP or Google/Microsoft → paywall (Pair $15/15 runs/2 files or Batch $50/50 runs multi-file/folder, no upload yet) → **Connect Moss User ID** → Pair or Batch portal |
 | Hosted result path | With Railway healthy, Start creates a job on the hosted API, uploads both files, hands off the Moss userid, finalizes, and polls status. On success it shows a real report link. Nothing auto-opens. |
 | Offline demo fallback | If the hosted API is unreachable, Start explains status. **Run offline demo instead** still produces a local `report.html` link labelled as a demo (no MOSS query). |
 | Past results | Successful runs appear under **Past results** on this device for reopen/copy/share. |
 | Stuck-run safety | A run that stops making progress closes itself at its deadline with an error, a reference, and recovery actions. |
 | Moss ID step | Extension shows instructions only — it does **not** email Stanford. Portal stays locked until a numeric ID is saved (masked + local vault cipher; never sync). |
-| Settings (embedded options) | Origins and permissions copy (`storage`, `alarms` only) |
+| Settings (embedded options) | Origins and permissions copy (`storage`, `alarms`, `identity`) |
 | Themes | Popup forces dark brand tokens; settings still follow OS preference |
 
 ## Go-live checklist pointer

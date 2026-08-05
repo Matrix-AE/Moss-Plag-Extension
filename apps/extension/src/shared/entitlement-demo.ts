@@ -1,13 +1,43 @@
 import { browser } from "wxt/browser";
 import * as mossId from "@moss/ui/moss-id";
 
-/** Product offer shown in the popup paywall (demo local entitlement). */
+export type PlanId = "pair" | "batch";
+
+/** Sold packages shown after signup (demo local entitlement until Paddle). */
+export const PLANS = Object.freeze({
+  pair: Object.freeze({
+    id: "pair" as const,
+    name: "Pair",
+    priceUsd: 15,
+    runs: 15,
+    maxFilesPerRun: 2,
+    mode: "pair" as const,
+    allowsDirectory: false,
+    headline: "Two-file Pair Check",
+    blurb: "Compare exactly two files per run.",
+  }),
+  batch: Object.freeze({
+    id: "batch" as const,
+    name: "Batch",
+    priceUsd: 50,
+    runs: 50,
+    maxFilesPerRun: 50,
+    mode: "batch" as const,
+    allowsDirectory: true,
+    headline: "Multi-file & folder runs",
+    blurb: "Multi-file or folder/directory selection per run.",
+  }),
+});
+
+export const PLAN_LIST = Object.freeze([PLANS.pair, PLANS.batch]);
+
+/** @deprecated Prefer PLANS.pair — kept so older copy/tests still resolve the $15 Pair offer. */
 export const OFFER = Object.freeze({
-  priceUsd: 15,
-  runs: 15,
-  maxFilesPerRun: 2,
-  /** Prompt 006 historically modeled 40 checks; product UX now sells 15 runs / max 2 files. */
-  note: "Offer display uses 15 runs / max 2 files per run (updated from the Prompt 006 40-check model).",
+  priceUsd: PLANS.pair.priceUsd,
+  runs: PLANS.pair.runs,
+  maxFilesPerRun: PLANS.pair.maxFilesPerRun,
+  /** Prompt 006 historically modeled 40 checks; Pair package sells 15 runs / max 2 files. */
+  note: "Offer display uses 15 runs / max 2 files per run (updated from the Prompt 006 40-check model). Batch is a separate $50 / 50-run package.",
 });
 
 /**
@@ -38,6 +68,9 @@ export type DemoEntitlement = {
   total: number;
   maxFilesPerRun: number;
   purchasedAt: number;
+  planId: PlanId;
+  mode: "pair" | "batch";
+  allowsDirectory: boolean;
 };
 
 export type DemoMossCredential = {
@@ -56,6 +89,24 @@ type StoredAccounts = Record<string, { passwordHash: string; createdAt: number }
 
 function isEmail(value: string): boolean {
   return mossId.isEmail(value);
+}
+
+function normalizeEntitlement(value: Partial<DemoEntitlement> | null | undefined): DemoEntitlement | null {
+  if (!value || typeof value.remaining !== "number" || typeof value.total !== "number") {
+    return null;
+  }
+  const planId: PlanId = value.planId === "batch" ? "batch" : "pair";
+  const plan = PLANS[planId];
+  return {
+    remaining: value.remaining,
+    total: value.total,
+    maxFilesPerRun:
+      typeof value.maxFilesPerRun === "number" ? value.maxFilesPerRun : plan.maxFilesPerRun,
+    purchasedAt: typeof value.purchasedAt === "number" ? value.purchasedAt : Date.now(),
+    planId,
+    mode: value.mode === "batch" ? "batch" : plan.mode,
+    allowsDirectory: Boolean(value.allowsDirectory ?? plan.allowsDirectory),
+  };
 }
 
 /** Demo-only FNV-1a style hash — not a production KDF. */
@@ -176,17 +227,19 @@ export async function clearDemoAccount(): Promise<void> {
 
 export async function loadDemoEntitlement(): Promise<DemoEntitlement | null> {
   const bag = await browser.storage.local.get(ENTITLEMENT_KEY);
-  const value = bag[ENTITLEMENT_KEY] as DemoEntitlement | undefined;
-  if (!value || typeof value.remaining !== "number") return null;
-  return value;
+  return normalizeEntitlement(bag[ENTITLEMENT_KEY] as Partial<DemoEntitlement> | undefined);
 }
 
-export async function purchaseDemoEntitlement(): Promise<DemoEntitlement> {
+export async function purchaseDemoEntitlement(planId: PlanId = "pair"): Promise<DemoEntitlement> {
+  const plan = PLANS[planId] || PLANS.pair;
   const entitlement: DemoEntitlement = {
-    remaining: OFFER.runs,
-    total: OFFER.runs,
-    maxFilesPerRun: OFFER.maxFilesPerRun,
+    remaining: plan.runs,
+    total: plan.runs,
+    maxFilesPerRun: plan.maxFilesPerRun,
     purchasedAt: Date.now(),
+    planId: plan.id,
+    mode: plan.mode,
+    allowsDirectory: plan.allowsDirectory,
   };
   await browser.storage.local.set({ [ENTITLEMENT_KEY]: entitlement });
   return entitlement;

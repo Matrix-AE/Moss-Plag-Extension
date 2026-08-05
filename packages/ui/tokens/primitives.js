@@ -64,7 +64,7 @@ const SIZE = Object.freeze({
   iconSm: 16,
   iconMd: 20,
   iconLg: 24,
-  popupWidth: 320,
+  popupWidth: 380,
   workspaceMax: 880,
 });
 

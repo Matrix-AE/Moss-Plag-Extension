@@ -54,7 +54,9 @@ function sanitizeFilename(name) {
  * @param {object} job
  * @param {string} job.mossUserId
  * @param {string} job.language protocol code (python, c, java, …)
- * @param {Array<{displayName:string, bytes:Buffer|Uint8Array|string}>} job.files exactly 2 for pair
+ * @param {Array<{displayName:string, bytes:Buffer|Uint8Array|string, submissionId?:number}>} job.files
+ * @param {"pair"|"batch"} [job.mode]
+ * @param {0|1} [job.directoryMode]
  * @param {object} [job.settings]
  * @param {string} [job.comment]
  * @param {object} [options]
@@ -77,7 +79,17 @@ async function submitPairToMoss(job, options = {}) {
     return classify("before-connect", "language", "missing language");
   }
   const files = job.files || [];
-  if (files.length !== 2) {
+  const maxFiles = job.mode === "batch" ? 50 : 2;
+  if (files.length < 2 || files.length > maxFiles) {
+    return classify(
+      "before-connect",
+      "generic-failure",
+      job.mode === "batch"
+        ? "batch requires 2–50 files"
+        : "pair requires exactly two files",
+    );
+  }
+  if (job.mode !== "batch" && files.length !== 2) {
     return classify("before-connect", "generic-failure", "pair requires exactly two files");
   }
 
@@ -115,8 +127,15 @@ async function submitPairToMoss(job, options = {}) {
     const { writeLine, writeBytes, readLine, cleanup } = session;
     try {
       await writeLine(`moss ${job.mossUserId}`);
-      // Pair of single files ⇒ directory off
-      await writeLine("directory 0");
+      const directoryMode =
+        job.directoryMode === 1 ||
+        files.some((file, _i, arr) => {
+          const id = Number(file.submissionId) || 0;
+          return id > 0 && arr.filter((other) => Number(other.submissionId) === id).length > 1;
+        })
+          ? 1
+          : 0;
+      await writeLine(`directory ${directoryMode}`);
       await writeLine("X 0");
       const maxmatches = clamp(job.settings?.commonMatchThreshold ?? 10, 1, 1000);
       const show = clamp(job.settings?.resultCount ?? 250, 1, 1000);
@@ -137,11 +156,15 @@ async function submitPairToMoss(job, options = {}) {
           ? file.bytes
           : Buffer.from(file.bytes == null ? "" : String(file.bytes), "utf8");
         const name = sanitizeFilename(file.displayName || `file${i + 1}`);
-        await writeLine(`file ${i + 1} ${job.language} ${body.length} ${name}`);
+        const submissionId =
+          Number.isInteger(Number(file.submissionId)) && Number(file.submissionId) >= 1
+            ? Number(file.submissionId)
+            : i + 1;
+        await writeLine(`file ${submissionId} ${job.language} ${body.length} ${name}`);
         await writeBytes(body);
       }
 
-      const comment = sanitizeComment(job.comment || "pair-check");
+      const comment = sanitizeComment(job.comment || (job.mode === "batch" ? "batch-check" : "pair-check"));
       await writeLine(`query 0 ${comment}`);
       const result = await readLine();
       if (!result.ok) {

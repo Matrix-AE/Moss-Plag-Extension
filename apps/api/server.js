@@ -9,19 +9,18 @@
  *
  * Endpoints:
  * - GET  /health
- * - POST /v1/jobs
- * - POST /v1/jobs/:id/credentials
- * - POST /v1/jobs/:id/uploads
- * - POST /v1/jobs/:id/finalize
- * - GET  /v1/jobs/:id
- * - POST /v1/jobs/:id/result/reveal
- * - POST /v1/jobs/:id/result/forget
+ * - POST /v1/auth/register|login|verify-otp|refresh|logout
+ * - GET  /v1/auth/me
+ * - POST /v1/jobs …
  */
 
 const http = require("node:http");
 const { URL } = require("node:url");
 const { createPairService } = require("./live/pair-service");
 const { submitPairToMoss } = require("@moss/provider-adapter/live-submit");
+const { createPasswordAuthService } = require("./auth/password-auth");
+const { createAuthRouter, bearer } = require("./auth/http-routes");
+const { createOAuthBroker } = require("./auth/oauth-broker");
 
 const DEFAULT_PORT = 8787;
 const DEFAULT_HOST = "127.0.0.1";
@@ -75,9 +74,18 @@ function createServer(options = {}) {
       }),
   });
 
+  const auth =
+    options.auth ||
+    createPasswordAuthService({
+      production: env.NODE_ENV === "production",
+      storePath: env.AUTH_STORE_PATH,
+    });
+  const oauth = options.oauth || createOAuthBroker({ auth, env });
+  const authRouter = createAuthRouter(auth, oauth);
+
   const server = http.createServer(async (req, res) => {
     try {
-      await handleRequest(req, res, { service, corsOrigins, submitMode });
+      await handleRequest(req, res, { service, corsOrigins, submitMode, auth, oauth, authRouter });
     } catch (error) {
       writeJson(res, 500, { ok: false, error: "internal", message: "Request failed." });
     }
@@ -88,6 +96,8 @@ function createServer(options = {}) {
     port,
     submitMode,
     service,
+    auth,
+    oauth,
     listen() {
       return new Promise((resolve, reject) => {
         server.once("error", reject);
@@ -133,11 +143,34 @@ async function handleRequest(req, res, ctx) {
       service: "moss-pair-api",
       submitMode: ctx.submitMode,
       livePublicTcp: ctx.submitMode === "public-raw-tcp",
+      auth: "email-password-otp",
     });
     return;
   }
 
-  const ownerUserId = String(req.headers["x-owner-user-id"] || "").trim();
+  if (ctx.authRouter) {
+    const handled = await ctx.authRouter.handle(req, res, {
+      path,
+      method: req.method,
+      url,
+      readJson,
+      writeJson,
+    });
+    if (handled) return;
+  }
+
+  let ownerUserId = String(req.headers["x-owner-user-id"] || "").trim();
+  const accessToken = bearer(req);
+  if (accessToken && ctx.auth) {
+    const authed = ctx.auth.authorize({ accessToken });
+    if (authed.ok) {
+      ownerUserId = authed.userId;
+    } else if (!ownerUserId) {
+      writeJson(res, 401, { ok: false, error: authed.error || "unauthorized" });
+      return;
+    }
+  }
+
   if (!ownerUserId && path.startsWith("/v1/")) {
     writeJson(res, 401, { ok: false, error: "owner-required" });
     return;
@@ -232,7 +265,7 @@ function applyCors(req, res, corsOrigins) {
   res.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
   res.setHeader(
     "Access-Control-Allow-Headers",
-    "Content-Type, X-Owner-User-Id, X-Idempotency-Key",
+    "Content-Type, Authorization, X-Owner-User-Id, X-Idempotency-Key",
   );
 }
 

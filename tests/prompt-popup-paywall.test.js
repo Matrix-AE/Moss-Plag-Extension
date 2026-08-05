@@ -106,16 +106,19 @@ test("P-POP-T05 popup is primary; Side Panel open-on-action is off; no workspace
   assert.ok(!fs.existsSync(path.join(root, "apps/extension/src/entrypoints/sidepanel")));
 });
 
-test("P-POP-T06 offer is $15 / 15 runs / max 2 files with Prompt 006 note", () => {
+test("P-POP-T06 offer catalog includes Pair $15/15/2 and Batch $50/50", () => {
   assert.match(entitlementSrc, /priceUsd:\s*15/);
   assert.match(entitlementSrc, /runs:\s*15/);
   assert.match(entitlementSrc, /maxFilesPerRun:\s*2/);
+  assert.match(entitlementSrc, /priceUsd:\s*50/);
+  assert.match(entitlementSrc, /runs:\s*50/);
   assert.match(entitlementSrc, /Prompt 006/);
-  assert.match(workflow, /\$\{OFFER\.priceUsd\}|\$15|Unlock/);
-  assert.match(workflow, /maxFilesPerRun|max 2/);
-  assert.match(changeNote, /15 runs/);
+  assert.match(workflow, /\$\{PLANS\.|PLAN_LIST|Unlock Pair|Unlock Batch|\$15|\$50/);
+  assert.match(workflow, /maxFilesPerRun|multi-file|Folder/);
+  assert.match(changeNote, /15 runs|15\/2/);
+  assert.match(changeNote, /50/);
   assert.match(changeNote, /40/);
-  assert.match(shellDoc, /15.*runs|15\/2/i);
+  assert.match(shellDoc, /15.*runs|\$15|Batch.*\$50|50.*runs/i);
 });
 
 test("P-POP-T07 auth and paywall gate workflow until entitled", () => {
@@ -125,6 +128,6 @@ test("P-POP-T07 auth and paywall gate workflow until entitled", () => {
   assert.match(workflow, /gate === "portal"/);
   assert.match(workflow, /Files have not been uploaded yet/);
   assert.match(workflow, /consumeDemoRun|purchaseDemoEntitlement/);
-  assert.match(workflow, /Start Pair Check/);
+  assert.match(workflow, /Start Pair Check|Start Batch Check/);
   assert.doesNotMatch(workflow, /sk_live|:7690|createConnection/);
 });

@@ -79,13 +79,13 @@ test("P-MOSS-ID-T05 portal stays gated until Moss ID is connected", () => {
   assert.match(workflow, /does not send the message|never send that email/i);
 });
 
-test("P-MOSS-ID-T06 demo login is documented and seeded", () => {
-  assert.match(entitlementSrc, /demo@mossworkflow\.test/);
-  assert.match(entitlementSrc, /DemoTest1!/);
-  assert.match(entitlementSrc, /ensureDemoAccountSeeded/);
-  assert.match(localDoc, /demo@mossworkflow\.test/);
-  assert.match(localDoc, /DemoTest1!/);
-  assert.match(workflow, /DEMO_LOGIN/);
+test("P-MOSS-ID-T06 production account auth is server-backed and OTP verified", () => {
+  assert.match(workflow, /registerAccount/);
+  assert.match(workflow, /loginAccount/);
+  assert.match(workflow, /verifyAccountOtp/);
+  assert.match(workflow, /GoogleIcon|loginWithSocialProvider|"Google"/);
+  assert.match(workflow, /MicrosoftIcon|Outlook|loginWithSocialProvider/);
+  assert.match(localDoc, /email|OTP|verification/i);
 });
 
 test("P-MOSS-ID-T07 no auto-send and no raw MOSS TCP in extension", () => {

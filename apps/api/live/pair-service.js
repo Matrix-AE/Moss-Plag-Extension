@@ -10,7 +10,8 @@ const { createCredentialVault } = require("../credentials/vault");
 const { createResultStore } = require("../results/metadata");
 
 const PAIR_SERVICE_VERSION = 1;
-const MAX_FILES = 2;
+const MAX_PAIR_FILES = 2;
+const MAX_BATCH_FILES = 50;
 const MAX_FILE_BYTES = 2 * 1024 * 1024;
 
 function createPairService({
@@ -30,7 +31,9 @@ function createPairService({
 
   function createJob({ ownerUserId, idempotencyKey, language, mode = "pair", settings = {} }) {
     if (!ownerUserId) return { ok: false, error: "owner-required", status: 400 };
-    if (mode !== "pair") return { ok: false, error: "pair-only", status: 400 };
+    if (mode !== "pair" && mode !== "batch") {
+      return { ok: false, error: "unsupported-mode", status: 400 };
+    }
     if (!language) return { ok: false, error: "language-required", status: 400 };
     if (idempotencyKey && idempotency.has(idempotencyKey)) {
       const existingId = idempotency.get(idempotencyKey);
@@ -46,11 +49,15 @@ function createPairService({
       settings: {
         commonMatchThreshold: settings.commonMatchThreshold ?? 10,
         resultCount: settings.resultCount ?? 250,
-        reportLabel: String(settings.reportLabel || "pair-check").slice(0, 80),
+        reportLabel: String(settings.reportLabel || (mode === "batch" ? "batch-check" : "pair-check")).slice(
+          0,
+          80,
+        ),
       },
       status: "draft",
       phase: "validate",
       files: [],
+      directoryMode: 0,
       credentialId: null,
       reportUrlRef: null,
       failureCode: null,
@@ -88,11 +95,18 @@ function createPairService({
       return { ok: false, error: "invalid-status", status: 409 };
     }
     const list = Array.isArray(files) ? files : [];
-    if (list.length === 0 || list.length > MAX_FILES) {
-      return { ok: false, error: "pair-requires-two-files", status: 400 };
+    const maxFiles = job.value.mode === "batch" ? MAX_BATCH_FILES : MAX_PAIR_FILES;
+    const minFiles = 2;
+    if (list.length < minFiles || list.length > maxFiles) {
+      return {
+        ok: false,
+        error: job.value.mode === "batch" ? "batch-file-count" : "pair-requires-two-files",
+        status: 400,
+      };
     }
     const normalized = [];
-    for (const file of list) {
+    for (let i = 0; i < list.length; i += 1) {
+      const file = list[i];
       const name = sanitizeName(file.displayName || file.name);
       const bytes = toBuffer(file.bytes || file.content || file.data);
       if (!name || !bytes || bytes.length === 0) {
@@ -101,12 +115,28 @@ function createPairService({
       if (bytes.length > MAX_FILE_BYTES) {
         return { ok: false, error: "oversized", status: 400 };
       }
-      normalized.push({ displayName: name, bytes });
+      const submissionId = Number(file.submissionId);
+      normalized.push({
+        displayName: name,
+        bytes,
+        submissionId:
+          Number.isInteger(submissionId) && submissionId >= 1 ? submissionId : i + 1,
+      });
     }
-    if (normalized.length !== MAX_FILES) {
+    if (job.value.mode === "pair" && normalized.length !== MAX_PAIR_FILES) {
       return { ok: false, error: "pair-requires-two-files", status: 400 };
     }
+    const distinctIds = new Set(normalized.map((f) => f.submissionId));
+    if (distinctIds.size < 2) {
+      return { ok: false, error: "insufficient-submissions", status: 400 };
+    }
+    const directoryMode = normalized.some(
+      (f, _i, arr) => arr.filter((other) => other.submissionId === f.submissionId).length > 1,
+    )
+      ? 1
+      : 0;
     job.value.files = normalized;
+    job.value.directoryMode = directoryMode;
     job.value.status = "ready";
     job.value.phase = "upload";
     job.value.updatedAt = now();
@@ -118,7 +148,9 @@ function createPairService({
     if (!job.ok) return job;
     const row = job.value;
     if (!row.credentialId) return { ok: false, error: "credential-required", status: 400 };
-    if (!row.files || row.files.length !== MAX_FILES) {
+    const minFiles = 2;
+    const maxFiles = row.mode === "batch" ? MAX_BATCH_FILES : MAX_PAIR_FILES;
+    if (!row.files || row.files.length < minFiles || row.files.length > maxFiles) {
       return { ok: false, error: "files-required", status: 400 };
     }
     if (["succeeded", "failed", "cancelled", "ambiguous"].includes(row.status)) {
@@ -170,9 +202,12 @@ function createPairService({
       outcome = await submitPair({
         mossUserId: decrypted.mossUserId,
         language: row.language,
+        mode: row.mode,
+        directoryMode: row.directoryMode || 0,
         files: row.files.map((f) => ({
           displayName: f.displayName,
           bytes: f.bytes,
+          submissionId: f.submissionId,
         })),
         settings: row.settings,
         comment: row.settings.reportLabel,
@@ -191,6 +226,7 @@ function createPairService({
       displayName: f.displayName,
       bytes: null,
       size: f.bytes ? f.bytes.length : 0,
+      submissionId: f.submissionId,
     }));
 
     if (!outcome.ok) {
@@ -327,7 +363,9 @@ function toBuffer(value) {
 
 module.exports = {
   PAIR_SERVICE_VERSION,
-  MAX_FILES,
+  MAX_FILES: MAX_PAIR_FILES,
+  MAX_PAIR_FILES,
+  MAX_BATCH_FILES,
   MAX_FILE_BYTES,
   createPairService,
 };

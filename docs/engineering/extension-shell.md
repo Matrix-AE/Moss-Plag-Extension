@@ -34,6 +34,7 @@ build when the manifest and this table disagree in either direction.
 | --- | --- |
 | `storage` | Persists drafts, active job references, and local demo entitlement on the device so a closed popup or suspended worker can recover |
 | `alarms` | Re-checks job status after the service worker is suspended, instead of holding a timer in memory |
+| `identity` | Opens Google/Microsoft OAuth in Chrome's controlled web-auth flow and returns only to the extension redirect URI |
 
 No optional permissions ship. No `tabs`, `scripting`, `downloads`, `sidePanel`, or broad host access
 is requested; the shell opens its own pages with `runtime.getURL` / `default_popup` and never
@@ -87,13 +88,15 @@ the popup.
 
 1. **Account** — create or sign in (demo local account until auth API is live). Deterministic demo:
    `demo@mossworkflow.test` / `DemoTest1!`.
-2. **Paywall** — `$15` unlocks **15** runs with **max 2 files** per run (Pair Check). Files are not
-   uploaded at checkout. Prompt 006 historically modeled 40 checks; product UX now sells 15/2.
+2. **Paywall** — choose a package after signup:
+   - **Pair** — `$15` unlocks **15** runs with **max 2 files** per run (Pair Check).
+   - **Batch** — `$50` unlocks **50** runs with **multi-file or folder/directory** selection (max 50 files).
+   Files are not uploaded at checkout. Prompt 006 historically modeled 40 checks; the Pair package sells 15/2.
 3. **Connect Moss User ID (BYO)** — after entitlement, customer enters the email used for Moss
    registration, sees the exact `registeruser` / `mail …` body to send themselves to
    `moss@moss.stanford.edu` (never auto-sent), acknowledges, then pastes only the numeric userid.
    Masked display + local vault-style cipher; never sync/logs; purchase IDs are not auth.
-4. **Portal** — unlocked only after Moss User ID is saved. Pair Check controls (language, two file
+4. **Portal** — unlocked only after Moss User ID is saved. Pair or Batch controls (language, file
    pickers, advanced options, consent, start run). Remaining runs decrement on start (local demo
    entitlement).
 5. **Run** — see below. Every started run reaches a terminal state.
