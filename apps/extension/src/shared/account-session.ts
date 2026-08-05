@@ -277,8 +277,12 @@ export async function logoutAccount(): Promise<void> {
   await clearAuthSession();
 }
 
-export function sessionToAccount(session: AuthSession): { email: string; signedInAt: number } {
-  return { email: session.email, signedInAt: session.signedInAt };
+export function sessionToAccount(session: AuthSession): {
+  email: string;
+  signedInAt: number;
+  userId: string;
+} {
+  return { email: session.email, signedInAt: session.signedInAt, userId: session.userId };
 }
 
 function sessionFromData(data: Json, fallbackEmail: string): AuthSession | null {

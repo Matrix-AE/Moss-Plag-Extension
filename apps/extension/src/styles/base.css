@@ -357,6 +357,10 @@ p {
   border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
 }
 
+.plan-card[data-plan="trial"] {
+  border-color: color-mix(in srgb, var(--success) 40%, var(--border));
+}
+
 .link-button {
   align-self: center;
   padding: 2px 4px;

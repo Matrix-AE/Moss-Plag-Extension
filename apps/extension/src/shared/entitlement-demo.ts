@@ -1,10 +1,23 @@
 import { browser } from "wxt/browser";
 import * as mossId from "@moss/ui/moss-id";
+import { API_ORIGIN, isAllowedOrigin } from "./origins";
+import { ensureDeviceId, loadAuthSession } from "./account-session";
 
-export type PlanId = "pair" | "batch";
+export type PlanId = "trial" | "pair" | "batch";
 
-/** Sold packages shown after signup (demo local entitlement until Paddle). */
+/** Sold / demo packages shown after signup (local entitlement until Paddle). */
 export const PLANS = Object.freeze({
+  trial: Object.freeze({
+    id: "trial" as const,
+    name: "Free demo",
+    priceUsd: 0,
+    runs: 1,
+    maxFilesPerRun: 2,
+    mode: "pair" as const,
+    allowsDirectory: false,
+    headline: "One free Pair Check",
+    blurb: "One two-file check on this PC. New accounts on the same computer cannot claim again.",
+  }),
   pair: Object.freeze({
     id: "pair" as const,
     name: "Pair",
@@ -29,6 +42,7 @@ export const PLANS = Object.freeze({
   }),
 });
 
+/** Paid packages on the pricing screen (trial is offered separately). */
 export const PLAN_LIST = Object.freeze([PLANS.pair, PLANS.batch]);
 
 /** @deprecated Prefer PLANS.pair — kept so older copy/tests still resolve the $15 Pair offer. */
@@ -36,8 +50,7 @@ export const OFFER = Object.freeze({
   priceUsd: PLANS.pair.priceUsd,
   runs: PLANS.pair.runs,
   maxFilesPerRun: PLANS.pair.maxFilesPerRun,
-  /** Prompt 006 historically modeled 40 checks; Pair package sells 15 runs / max 2 files. */
-  note: "Offer display uses 15 runs / max 2 files per run (updated from the Prompt 006 40-check model). Batch is a separate $50 / 50-run package.",
+  note: "Offer display uses 15 runs / max 2 files per run (updated from the Prompt 006 40-check model). Batch is a separate $50 / 50-run package. New PCs may claim one free demo Pair Check.",
 });
 
 /**
@@ -57,10 +70,13 @@ const RELEASED_RUNS_KEY = "moss.demo.releasedRuns";
 const RELEASED_RUNS_MAX = 50;
 /** Local-only Moss credential record — never sync; never stores plaintext userid. */
 const MOSS_CRED_KEY = "moss.demo.mossCredential";
+/** Local mirror of device trial claim — server is source of truth when online. */
+const DEVICE_TRIAL_KEY = "moss.device.trialClaim";
 
 export type DemoAccount = {
   email: string;
   signedInAt: number;
+  userId?: string;
 };
 
 export type DemoEntitlement = {
@@ -71,6 +87,9 @@ export type DemoEntitlement = {
   planId: PlanId;
   mode: "pair" | "batch";
   allowsDirectory: boolean;
+  /** Bound to the signed-in account so a new signup cannot inherit another user's purchase. */
+  ownerUserId: string;
+  ownerEmail: string;
 };
 
 export type DemoMossCredential = {
@@ -83,6 +102,14 @@ export type DemoMossCredential = {
    * never written to sync storage or logs.
    */
   localCipher: string;
+  ownerUserId: string;
+  ownerEmail: string;
+};
+
+export type DeviceTrialStatus = {
+  claimed: boolean;
+  claimedAt?: number | undefined;
+  email?: string | undefined;
 };
 
 type StoredAccounts = Record<string, { passwordHash: string; createdAt: number }>;
@@ -91,11 +118,17 @@ function isEmail(value: string): boolean {
   return mossId.isEmail(value);
 }
 
+function normalizePlanId(value: unknown): PlanId {
+  if (value === "batch") return "batch";
+  if (value === "trial") return "trial";
+  return "pair";
+}
+
 function normalizeEntitlement(value: Partial<DemoEntitlement> | null | undefined): DemoEntitlement | null {
   if (!value || typeof value.remaining !== "number" || typeof value.total !== "number") {
     return null;
   }
-  const planId: PlanId = value.planId === "batch" ? "batch" : "pair";
+  const planId = normalizePlanId(value.planId);
   const plan = PLANS[planId];
   return {
     remaining: value.remaining,
@@ -106,6 +139,8 @@ function normalizeEntitlement(value: Partial<DemoEntitlement> | null | undefined
     planId,
     mode: value.mode === "batch" ? "batch" : plan.mode,
     allowsDirectory: Boolean(value.allowsDirectory ?? plan.allowsDirectory),
+    ownerUserId: typeof value.ownerUserId === "string" ? value.ownerUserId : "",
+    ownerEmail: typeof value.ownerEmail === "string" ? value.ownerEmail : "",
   };
 }
 
@@ -225,12 +260,69 @@ export async function clearDemoAccount(): Promise<void> {
   await browser.storage.local.remove([ACCOUNT_KEY, ENTITLEMENT_KEY, MOSS_CRED_KEY, RELEASED_RUNS_KEY]);
 }
 
+/**
+ * Drop local purchase / Moss vault when they belong to a different account.
+ * Prevents a new signup on the same PC from skipping pricing / Moss ID.
+ */
+export async function syncLocalStateForAccount(owner: {
+  userId: string;
+  email: string;
+}): Promise<{ entitlement: DemoEntitlement | null; moss: DemoMossCredential | null }> {
+  const ownerUserId = String(owner.userId || "").trim();
+  const ownerEmail = String(owner.email || "").trim().toLowerCase();
+  const [rawEntitlement, rawMoss] = await Promise.all([loadDemoEntitlement(), loadDemoMossCredential()]);
+
+  let entitlement = rawEntitlement;
+  if (
+    entitlement &&
+    ownerUserId &&
+    entitlement.ownerUserId &&
+    entitlement.ownerUserId !== ownerUserId
+  ) {
+    await browser.storage.local.remove([ENTITLEMENT_KEY, RELEASED_RUNS_KEY]);
+    entitlement = null;
+  } else if (entitlement && !entitlement.ownerUserId && ownerUserId) {
+    // Legacy unscoped purchase on this device — do not inherit onto a new account.
+    await browser.storage.local.remove([ENTITLEMENT_KEY, RELEASED_RUNS_KEY]);
+    entitlement = null;
+  }
+
+  let moss = rawMoss;
+  if (moss && ownerUserId && moss.ownerUserId && moss.ownerUserId !== ownerUserId) {
+    await browser.storage.local.remove(MOSS_CRED_KEY);
+    moss = null;
+  } else if (moss && !moss.ownerUserId && ownerUserId) {
+    await browser.storage.local.remove(MOSS_CRED_KEY);
+    moss = null;
+  }
+
+  return { entitlement, moss };
+}
+
 export async function loadDemoEntitlement(): Promise<DemoEntitlement | null> {
   const bag = await browser.storage.local.get(ENTITLEMENT_KEY);
   return normalizeEntitlement(bag[ENTITLEMENT_KEY] as Partial<DemoEntitlement> | undefined);
 }
 
-export async function purchaseDemoEntitlement(planId: PlanId = "pair"): Promise<DemoEntitlement> {
+async function resolveOwner(explicit?: { userId?: string | undefined; email?: string | undefined }) {
+  const session = await loadAuthSession();
+  const userId = String(explicit?.userId || session?.userId || "").trim();
+  const email = String(explicit?.email || session?.email || "").trim().toLowerCase();
+  if (!userId || !email) {
+    return { ok: false as const, error: "Sign in before unlocking a plan." };
+  }
+  return { ok: true as const, userId, email };
+}
+
+export async function purchaseDemoEntitlement(
+  planId: PlanId = "pair",
+  owner?: { userId?: string | undefined; email?: string | undefined },
+): Promise<DemoEntitlement> {
+  if (planId === "trial") {
+    throw new Error("Use claimDeviceTrial for the free demo.");
+  }
+  const resolved = await resolveOwner(owner);
+  if (!resolved.ok) throw new Error(resolved.error);
   const plan = PLANS[planId] || PLANS.pair;
   const entitlement: DemoEntitlement = {
     remaining: plan.runs,
@@ -240,9 +332,146 @@ export async function purchaseDemoEntitlement(planId: PlanId = "pair"): Promise<
     planId: plan.id,
     mode: plan.mode,
     allowsDirectory: plan.allowsDirectory,
+    ownerUserId: resolved.userId,
+    ownerEmail: resolved.email,
   };
   await browser.storage.local.set({ [ENTITLEMENT_KEY]: entitlement });
   return entitlement;
+}
+
+export async function loadDeviceTrialStatus(): Promise<DeviceTrialStatus> {
+  const deviceId = await ensureDeviceId();
+  const local = await browser.storage.local.get(DEVICE_TRIAL_KEY);
+  const localClaim = local[DEVICE_TRIAL_KEY] as DeviceTrialStatus | undefined;
+
+  if (!isAllowedOrigin(`${API_ORIGIN}/`)) {
+    return localClaim?.claimed
+      ? { claimed: true, claimedAt: localClaim.claimedAt, email: localClaim.email }
+      : { claimed: false };
+  }
+
+  try {
+    const response = await fetch(`${API_ORIGIN}/v1/auth/device-trial?deviceId=${encodeURIComponent(deviceId)}`, {
+      method: "GET",
+      headers: { "Content-Type": "application/json" },
+    });
+    const data = (await response.json().catch(() => ({}))) as {
+      ok?: boolean;
+      claimed?: boolean;
+      claimedAt?: number;
+      email?: string;
+    };
+    if (response.ok && data.ok !== false) {
+      const status: DeviceTrialStatus = {
+        claimed: Boolean(data.claimed),
+        claimedAt: typeof data.claimedAt === "number" ? data.claimedAt : undefined,
+        email: typeof data.email === "string" ? data.email : undefined,
+      };
+      await browser.storage.local.set({ [DEVICE_TRIAL_KEY]: status });
+      return status;
+    }
+  } catch {
+    /* fall through to local mirror */
+  }
+
+  return localClaim?.claimed
+    ? { claimed: true, claimedAt: localClaim.claimedAt, email: localClaim.email }
+    : { claimed: false };
+}
+
+/**
+ * One free Pair Check per PC (deviceId). New accounts on the same computer cannot claim again.
+ * Server records the claim when reachable; local storage mirrors it for offline UX.
+ */
+export async function claimDeviceTrial(owner?: {
+  userId?: string | undefined;
+  email?: string | undefined;
+}): Promise<
+  { ok: true; entitlement: DemoEntitlement } | { ok: false; error: string }
+> {
+  const resolved = await resolveOwner(owner);
+  if (!resolved.ok) return { ok: false, error: resolved.error };
+  const deviceId = await ensureDeviceId();
+  const session = await loadAuthSession();
+
+  if (isAllowedOrigin(`${API_ORIGIN}/`)) {
+    try {
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (session?.accessToken) headers.Authorization = `Bearer ${session.accessToken}`;
+      const response = await fetch(`${API_ORIGIN}/v1/auth/claim-device-trial`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          deviceId,
+          email: resolved.email,
+          userId: resolved.userId,
+        }),
+      });
+      const data = (await response.json().catch(() => ({}))) as {
+        ok?: boolean;
+        error?: string;
+        claimed?: boolean;
+      };
+      if (!response.ok || data.ok === false) {
+        if (data.error === "device-trial-used" || data.claimed) {
+          await browser.storage.local.set({
+            [DEVICE_TRIAL_KEY]: {
+              claimed: true,
+              claimedAt: Date.now(),
+              email: resolved.email,
+            },
+          });
+          return {
+            ok: false,
+            error: "This PC already used its free demo check. Choose a paid plan to continue.",
+          };
+        }
+        return {
+          ok: false,
+          error:
+            data.error === "unauthorized"
+              ? "Sign in again, then claim the free demo."
+              : "Could not claim the free demo. Try again or choose a paid plan.",
+        };
+      }
+    } catch {
+      return {
+        ok: false,
+        error: "Cannot reach the API to claim the free demo. Check Railway, then try again.",
+      };
+    }
+  }
+
+  const local = await browser.storage.local.get(DEVICE_TRIAL_KEY);
+  const existing = local[DEVICE_TRIAL_KEY] as DeviceTrialStatus | undefined;
+  if (existing?.claimed) {
+    return {
+      ok: false,
+      error: "This PC already used its free demo check. Choose a paid plan to continue.",
+    };
+  }
+
+  const plan = PLANS.trial;
+  const entitlement: DemoEntitlement = {
+    remaining: plan.runs,
+    total: plan.runs,
+    maxFilesPerRun: plan.maxFilesPerRun,
+    purchasedAt: Date.now(),
+    planId: plan.id,
+    mode: plan.mode,
+    allowsDirectory: plan.allowsDirectory,
+    ownerUserId: resolved.userId,
+    ownerEmail: resolved.email,
+  };
+  await browser.storage.local.set({
+    [ENTITLEMENT_KEY]: entitlement,
+    [DEVICE_TRIAL_KEY]: {
+      claimed: true,
+      claimedAt: Date.now(),
+      email: resolved.email,
+    },
+  });
+  return { ok: true, entitlement };
 }
 
 export async function consumeDemoRun(): Promise<
@@ -299,8 +528,9 @@ export async function releaseDemoRun(
   return { ok: true, entitlement };
 }
 
+/** Active package with at least one run left — exhausted packages return to pricing. */
 export function isEntitled(entitlement: DemoEntitlement | null): boolean {
-  return Boolean(entitlement && entitlement.remaining >= 0 && entitlement.total > 0);
+  return Boolean(entitlement && entitlement.remaining > 0 && entitlement.total > 0);
 }
 
 export async function loadDemoMossCredential(): Promise<DemoMossCredential | null> {
@@ -321,6 +551,7 @@ export function isMossConnected(credential: DemoMossCredential | null): boolean 
 export async function saveDemoMossCredential(
   mossUserId: string,
   registrationEmail: string,
+  owner?: { userId?: string | undefined; email?: string | undefined },
 ): Promise<{ ok: true; credential: DemoMossCredential } | { ok: false; error: string }> {
   const masked = mossId.maskMossUserId(mossUserId);
   if (!masked.ok) {
@@ -329,11 +560,15 @@ export async function saveDemoMossCredential(
   if (!isEmail(registrationEmail)) {
     return { ok: false, error: "Enter the email you used for Moss registration." };
   }
+  const resolved = await resolveOwner(owner);
+  if (!resolved.ok) return { ok: false, error: resolved.error };
   const credential: DemoMossCredential = {
     display: masked.masked,
     connectedAt: Date.now(),
     registrationEmail: registrationEmail.trim(),
     localCipher: obfuscateMossUserId(masked.digits),
+    ownerUserId: resolved.userId,
+    ownerEmail: resolved.email,
   };
   await browser.storage.local.set({ [MOSS_CRED_KEY]: credential });
   return { ok: true, credential };

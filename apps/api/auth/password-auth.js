@@ -330,6 +330,47 @@ function createPasswordAuthService({
     }));
   }
 
+  /** One free demo Pair Check per device — new accounts on the same PC cannot reclaim. */
+  function getDeviceTrial({ deviceId }) {
+    const id = String(deviceId || "").trim();
+    if (!id || id.length < 8) return { ok: false, error: "device-required", status: 400 };
+    const claim = state.deviceTrials[id];
+    if (!claim) return { ok: true, claimed: false };
+    return {
+      ok: true,
+      claimed: true,
+      claimedAt: claim.claimedAt,
+      email: claim.email,
+      userId: claim.userId,
+    };
+  }
+
+  function claimDeviceTrial({ deviceId, email, userId }) {
+    const id = String(deviceId || "").trim();
+    if (!id || id.length < 8) return { ok: false, error: "device-required", status: 400 };
+    const existing = state.deviceTrials[id];
+    if (existing) {
+      return {
+        ok: false,
+        error: "device-trial-used",
+        status: 409,
+        claimed: true,
+        claimedAt: existing.claimedAt,
+        email: existing.email,
+      };
+    }
+    const normalized = normalizeEmail(email);
+    const claim = {
+      deviceId: id,
+      email: isEmail(normalized) ? normalized : "",
+      userId: String(userId || "").trim() || null,
+      claimedAt: now(),
+    };
+    state.deviceTrials[id] = claim;
+    persist();
+    return { ok: true, claimed: true, claimedAt: claim.claimedAt, email: claim.email };
+  }
+
   return {
     register,
     login,
@@ -341,6 +382,8 @@ function createPasswordAuthService({
     authorize,
     logoutAll,
     listUsersPublic,
+    getDeviceTrial,
+    claimDeviceTrial,
     OTP_TTL_MS,
     ACCESS_TTL_MS,
     REFRESH_TTL_MS,
@@ -398,14 +441,18 @@ function validatePassword(password) {
 
 function loadStore(storePath) {
   try {
-    if (!fs.existsSync(storePath)) return { version: 1, users: [] };
+    if (!fs.existsSync(storePath)) return { version: 1, users: [], deviceTrials: {} };
     const raw = JSON.parse(fs.readFileSync(storePath, "utf8"));
     return {
       version: 1,
       users: Array.isArray(raw.users) ? raw.users : [],
+      deviceTrials:
+        raw.deviceTrials && typeof raw.deviceTrials === "object" && !Array.isArray(raw.deviceTrials)
+          ? raw.deviceTrials
+          : {},
     };
   } catch {
-    return { version: 1, users: [] };
+    return { version: 1, users: [], deviceTrials: {} };
   }
 }
 
@@ -413,7 +460,19 @@ function saveStore(storePath, state) {
   const dir = path.dirname(storePath);
   fs.mkdirSync(dir, { recursive: true });
   const tmp = `${storePath}.${process.pid}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify({ version: 1, users: state.users }, null, 2), "utf8");
+  fs.writeFileSync(
+    tmp,
+    JSON.stringify(
+      {
+        version: 1,
+        users: state.users,
+        deviceTrials: state.deviceTrials || {},
+      },
+      null,
+      2,
+    ),
+    "utf8",
+  );
   fs.renameSync(tmp, storePath);
 }
 

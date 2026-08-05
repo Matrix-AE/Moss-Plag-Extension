@@ -19,6 +19,7 @@ import {
   OFFER,
   PLAN_LIST,
   PLANS,
+  claimDeviceTrial,
   clearDemoAccount,
   clearDemoMossCredential,
   consumeDemoRun,
@@ -27,12 +28,15 @@ import {
   isMossConnected,
   loadDemoEntitlement,
   loadDemoMossCredential,
+  loadDeviceTrialStatus,
   purchaseDemoEntitlement,
   releaseDemoRun,
   saveDemoMossCredential,
+  syncLocalStateForAccount,
   type DemoAccount,
   type DemoEntitlement,
   type DemoMossCredential,
+  type DeviceTrialStatus,
   type PlanId,
 } from "../entitlement-demo";
 import {
@@ -192,6 +196,7 @@ export function WorkflowApp() {
   );
   const [account, setAccount] = useState<DemoAccount | null>(null);
   const [entitlement, setEntitlement] = useState<DemoEntitlement | null>(null);
+  const [deviceTrial, setDeviceTrial] = useState<DeviceTrialStatus>({ claimed: false });
   const [mossCredential, setMossCredential] = useState<DemoMossCredential | null>(null);
   const [authError, setAuthError] = useState("");
   const [socialBusy, setSocialBusy] = useState<SocialProvider | null>(null);
@@ -243,7 +248,12 @@ export function WorkflowApp() {
   const comparisonMode = entitlement?.mode === "batch" ? ("batch" as const) : ("pair" as const);
   const maxFilesPerRun = entitlement?.maxFilesPerRun ?? OFFER.maxFilesPerRun;
   const allowsDirectory = Boolean(entitlement?.allowsDirectory);
-  const planLabel = entitlement?.planId === "batch" ? PLANS.batch.name : PLANS.pair.name;
+  const planLabel =
+    entitlement?.planId === "batch"
+      ? PLANS.batch.name
+      : entitlement?.planId === "trial"
+        ? PLANS.trial.name
+        : PLANS.pair.name;
   const runPhase = run?.phase ?? null;
   const runTerminal = runPhase ? runLifecycle.isTerminalPhase(runPhase) : false;
   const progressPhase = Boolean(run) && !runTerminal;
@@ -351,13 +361,34 @@ export function WorkflowApp() {
   );
 
   const refreshSession = useCallback(async () => {
-    const [authSession, nextEntitlement, nextMoss, nextHistory] = await Promise.all([
+    const [authSession, nextHistory, trialStatus] = await Promise.all([
       loadAuthSession(),
-      loadDemoEntitlement(),
-      loadDemoMossCredential(),
       loadResultHistory(),
+      loadDeviceTrialStatus(),
     ]);
     const nextAccount = authSession ? sessionToAccount(authSession) : null;
+    setDeviceTrial(trialStatus);
+
+    let nextEntitlement: DemoEntitlement | null = null;
+    let nextMoss: DemoMossCredential | null = null;
+    if (nextAccount?.userId) {
+      const synced = await syncLocalStateForAccount({
+        userId: nextAccount.userId,
+        email: nextAccount.email,
+      });
+      nextEntitlement = synced.entitlement;
+      nextMoss = synced.moss;
+    } else {
+      nextEntitlement = await loadDemoEntitlement();
+      nextMoss = await loadDemoMossCredential();
+      // Signed-out browsers must not keep a previous account's portal unlock.
+      if (nextEntitlement || nextMoss) {
+        await clearDemoAccount();
+        nextEntitlement = null;
+        nextMoss = null;
+      }
+    }
+
     setAccount(nextAccount);
     setEntitlement(nextEntitlement);
     setMossCredential(nextMoss);
@@ -640,16 +671,20 @@ export function WorkflowApp() {
       setOtpNonce("");
       setAuthStep("credentials");
       setMossRegEmail(verified.session.email);
-      const [nextEntitlement, nextMoss] = await Promise.all([
-        loadDemoEntitlement(),
-        loadDemoMossCredential(),
-      ]);
-      setEntitlement(nextEntitlement);
-      setMossCredential(nextMoss);
-      if (nextMoss?.display) setProviderIdMasked(nextMoss.display);
-      resolveGate(sessionToAccount(verified.session), nextEntitlement, nextMoss);
+      const synced = await syncLocalStateForAccount({
+        userId: verified.session.userId,
+        email: verified.session.email,
+      });
+      const trialStatus = await loadDeviceTrialStatus();
+      setDeviceTrial(trialStatus);
+      setEntitlement(synced.entitlement);
+      setMossCredential(synced.moss);
+      if (synced.moss?.display) setProviderIdMasked(synced.moss.display);
+      resolveGate(sessionToAccount(verified.session), synced.entitlement, synced.moss);
       setGateMessage(
-        `Email verified. Choose Pair ($${PLANS.pair.priceUsd}) or Batch ($${PLANS.batch.priceUsd}) to unlock runs.`,
+        synced.entitlement && isEntitled(synced.entitlement)
+          ? "Welcome back. Continue where you left off."
+          : `Choose a plan to continue — Free demo (1 check on this PC), Pair ($${PLANS.pair.priceUsd}), or Batch ($${PLANS.batch.priceUsd}).`,
       );
       return;
     }
@@ -739,15 +774,21 @@ export function WorkflowApp() {
     const nextAccount = sessionToAccount(signedIn.session);
     setAccount(nextAccount);
     setMossRegEmail(signedIn.session.email);
-    const [nextEntitlement, nextMoss] = await Promise.all([
-      loadDemoEntitlement(),
-      loadDemoMossCredential(),
-    ]);
-    setEntitlement(nextEntitlement);
-    setMossCredential(nextMoss);
-    if (nextMoss?.display) setProviderIdMasked(nextMoss.display);
-    resolveGate(nextAccount, nextEntitlement, nextMoss);
-    setGateMessage(`Signed in with ${provider === "google" ? "Google" : "Microsoft"}.`);
+    const synced = await syncLocalStateForAccount({
+      userId: signedIn.session.userId,
+      email: signedIn.session.email,
+    });
+    const trialStatus = await loadDeviceTrialStatus();
+    setDeviceTrial(trialStatus);
+    setEntitlement(synced.entitlement);
+    setMossCredential(synced.moss);
+    if (synced.moss?.display) setProviderIdMasked(synced.moss.display);
+    resolveGate(nextAccount, synced.entitlement, synced.moss);
+    setGateMessage(
+      synced.entitlement && isEntitled(synced.entitlement)
+        ? `Signed in with ${provider === "google" ? "Google" : "Microsoft"}.`
+        : `Signed in with ${provider === "google" ? "Google" : "Microsoft"}. Choose a plan to unlock PairProof.`,
+    );
   };
 
   const onAuthBackToCredentials = () => {
@@ -759,8 +800,7 @@ export function WorkflowApp() {
     setAuthError("");
   };
 
-  const onPurchase = async (planId: PlanId) => {
-    const next = await purchaseDemoEntitlement(planId);
+  const unlockPlan = (next: DemoEntitlement, planId: PlanId) => {
     setEntitlement(next);
     setSourceItems([]);
     setSourceFiles([]);
@@ -776,6 +816,36 @@ export function WorkflowApp() {
     );
   };
 
+  const onPurchase = async (planId: PlanId) => {
+    if (planId === "trial") {
+      await onClaimFreeTrial();
+      return;
+    }
+    try {
+      const next = await purchaseDemoEntitlement(planId, {
+        userId: account?.userId,
+        email: account?.email,
+      });
+      unlockPlan(next, planId);
+    } catch (error) {
+      setGateMessage(error instanceof Error ? error.message : "Could not unlock that plan.");
+    }
+  };
+
+  const onClaimFreeTrial = async () => {
+    const claimed = await claimDeviceTrial({
+      userId: account?.userId,
+      email: account?.email,
+    });
+    if (!claimed.ok) {
+      setDeviceTrial({ claimed: true });
+      setGateMessage(claimed.error);
+      return;
+    }
+    setDeviceTrial({ claimed: true, claimedAt: Date.now(), email: account?.email });
+    unlockPlan(claimed.entitlement, "trial");
+  };
+
   const onSaveMossUserId = async () => {
     setMossIdError("");
     if (!canEnterId) {
@@ -783,7 +853,10 @@ export function WorkflowApp() {
       return;
     }
     const regEmail = (mossRegEmail || account?.email || "").trim();
-    const saved = await saveDemoMossCredential(providerIdInput, regEmail);
+    const saved = await saveDemoMossCredential(providerIdInput, regEmail, {
+      userId: account?.userId,
+      email: account?.email,
+    });
     if (!saved.ok) {
       setMossIdError(saved.error);
       setProviderIdError(saved.error);
@@ -1340,7 +1413,7 @@ export function WorkflowApp() {
     gate === "auth"
       ? "Account required"
       : gate === "paywall"
-        ? "Choose a package"
+        ? "Choose a plan"
         : gate === "moss-id"
           ? "Connect Moss User ID"
           : runView && !runView.isTerminal
@@ -1351,15 +1424,17 @@ export function WorkflowApp() {
 
   const statusDetail =
     gate === "auth"
-      ? "Create or sign in to continue. Files stay on this device until you purchase and consent."
+      ? "Create or sign in to continue. Files stay on this device until you choose a plan and consent."
       : gate === "paywall"
-        ? `Pair $${PLANS.pair.priceUsd} · ${PLANS.pair.runs} runs (2 files) · Batch $${PLANS.batch.priceUsd} · ${PLANS.batch.runs} runs (multi-file or folder). Nothing uploaded at checkout.`
+        ? deviceTrial.claimed
+          ? `This PC already used its free demo. Pair $${PLANS.pair.priceUsd} · ${PLANS.pair.runs} runs, or Batch $${PLANS.batch.priceUsd} · ${PLANS.batch.runs} runs.`
+          : `Free demo · 1 Pair Check on this PC · or Pair $${PLANS.pair.priceUsd} · Batch $${PLANS.batch.priceUsd}. Complete a plan before Moss ID and runs.`
         : gate === "moss-id"
-          ? "After purchase, register with Moss yourself and paste only the numeric userid. We never send that email for you."
+          ? "After you unlock a plan, register with Moss yourself and paste only the numeric userid. We never send that email for you."
           : runView && !runView.isTerminal
             ? runView.detail
             : runsLeft < 1
-              ? "Local demo entitlement is exhausted. Billing API will replace this simulate-purchase path."
+              ? "No runs left on this plan. Return to pricing to unlock more."
               : `${runsLeft} of ${entitlement?.total ?? OFFER.runs} runs left · ${planLabel} · max ${maxFilesPerRun} files`;
 
   if (gate === "loading") {
@@ -1648,6 +1723,27 @@ export function WorkflowApp() {
           {gate === "paywall" ? (
             <div className="paywall-panel">
               <div className="plan-grid">
+                <article className="plan-card" data-plan="trial">
+                  <h3>{PLANS.trial.name}</h3>
+                  <p className="plan-price">
+                    <strong>$0</strong>
+                    <span> this PC only</span>
+                  </p>
+                  <ul className="offer-list">
+                    <li>
+                      <strong>{PLANS.trial.runs}</strong> Pair Check
+                    </li>
+                    <li>{PLANS.trial.blurb}</li>
+                  </ul>
+                  <button
+                    type="button"
+                    className="cta"
+                    disabled={deviceTrial.claimed}
+                    onClick={() => void onClaimFreeTrial()}
+                  >
+                    {deviceTrial.claimed ? "Free demo used on this PC" : "Start free demo"}
+                  </button>
+                </article>
                 {PLAN_LIST.map((plan) => (
                   <article key={plan.id} className="plan-card" data-plan={plan.id}>
                     <h3>{plan.name}</h3>
@@ -1674,9 +1770,11 @@ export function WorkflowApp() {
                   </article>
                 ))}
               </div>
-              <p className="status">Files have not been uploaded yet.</p>
               <p className="status">
-                Simulated purchase for local demo — no payment-processor secrets, no live charge.
+                Complete a plan first. Then connect Moss User ID. Files have not been uploaded yet.
+              </p>
+              <p className="status">
+                Paid unlocks are simulated for local demo — no payment-processor charge yet.
               </p>
             </div>
           ) : null}

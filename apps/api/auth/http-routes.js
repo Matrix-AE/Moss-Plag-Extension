@@ -83,6 +83,37 @@ function createAuthRouter(auth, oauth = null) {
         return true;
       }
 
+      if (method === "GET" && path === "/v1/auth/device-trial") {
+        const result = auth.getDeviceTrial({
+          deviceId: url.searchParams.get("deviceId"),
+        });
+        writeJson(res, result.ok ? 200 : result.status || 400, result);
+        return true;
+      }
+
+      if (method === "POST" && path === "/v1/auth/claim-device-trial") {
+        const body = await readJson(req);
+        const accessToken = bearer(req);
+        let userId = body.userId;
+        let email = body.email;
+        if (accessToken) {
+          const authed = auth.authorize({ accessToken });
+          if (!authed.ok) {
+            writeJson(res, 401, authed);
+            return true;
+          }
+          userId = authed.userId;
+          email = authed.email;
+        }
+        const result = auth.claimDeviceTrial({
+          deviceId: body.deviceId,
+          email,
+          userId,
+        });
+        writeJson(res, result.ok ? 200 : result.status || 400, result);
+        return true;
+      }
+
       if (method === "POST" && path === "/v1/auth/verify-otp") {
         const body = await readJson(req);
         const result = auth.verifyOtp({

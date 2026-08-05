@@ -263,3 +263,90 @@ test("auth HTTP routes expose forgot-password and reset-password", async () => {
   await api.close();
   fs.unlinkSync(storePath);
 });
+
+test("device trial can be claimed once per deviceId across accounts", async () => {
+  const storePath = path.join(os.tmpdir(), `moss-auth-trial-${process.pid}-${Date.now()}.json`);
+  const auth = createPasswordAuthService({
+    production: false,
+    storePath,
+    sendOtp: async () => ({ ok: true, id: "test" }),
+  });
+
+  assert.equal(auth.getDeviceTrial({ deviceId: "dev_abc12345" }).claimed, false);
+
+  const first = auth.claimDeviceTrial({
+    deviceId: "dev_abc12345",
+    email: "a@example.com",
+    userId: "user_a",
+  });
+  assert.equal(first.ok, true);
+  assert.equal(first.claimed, true);
+
+  const again = auth.claimDeviceTrial({
+    deviceId: "dev_abc12345",
+    email: "b@example.com",
+    userId: "user_b",
+  });
+  assert.equal(again.ok, false);
+  assert.equal(again.error, "device-trial-used");
+
+  const otherPc = auth.claimDeviceTrial({
+    deviceId: "dev_otherpc99",
+    email: "b@example.com",
+    userId: "user_b",
+  });
+  assert.equal(otherPc.ok, true);
+
+  const status = auth.getDeviceTrial({ deviceId: "dev_abc12345" });
+  assert.equal(status.claimed, true);
+  assert.equal(status.email, "a@example.com");
+
+  fs.unlinkSync(storePath);
+});
+
+test("auth HTTP routes expose device-trial claim", async () => {
+  const storePath = path.join(os.tmpdir(), `moss-auth-trial-http-${process.pid}-${Date.now()}.json`);
+  const auth = createPasswordAuthService({
+    production: false,
+    storePath,
+    sendOtp: async () => ({ ok: true, id: "test" }),
+  });
+  const api = createServer({ host: "127.0.0.1", port: 0, submitMode: "mock-loopback", auth });
+  await new Promise((resolve, reject) => {
+    api.server.listen(0, "127.0.0.1", (err) => (err ? reject(err) : resolve()));
+  });
+  const { port } = api.server.address();
+  const origin = `http://127.0.0.1:${port}`;
+
+  const open = await fetch(`${origin}/v1/auth/device-trial?deviceId=dev_http_trial1`);
+  const openBody = await open.json();
+  assert.equal(open.status, 200);
+  assert.equal(openBody.claimed, false);
+
+  const claim = await fetch(`${origin}/v1/auth/claim-device-trial`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      deviceId: "dev_http_trial1",
+      email: "trial@example.com",
+      userId: "user_trial",
+    }),
+  });
+  const claimBody = await claim.json();
+  assert.equal(claim.status, 200);
+  assert.equal(claimBody.ok, true);
+
+  const dup = await fetch(`${origin}/v1/auth/claim-device-trial`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      deviceId: "dev_http_trial1",
+      email: "other@example.com",
+      userId: "user_other",
+    }),
+  });
+  assert.equal(dup.status, 409);
+
+  await api.close();
+  fs.unlinkSync(storePath);
+});

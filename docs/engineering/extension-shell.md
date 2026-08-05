@@ -88,17 +88,21 @@ the popup.
 
 1. **Account** — create or sign in (demo local account until auth API is live). Deterministic demo:
    `demo@mossworkflow.test` / `DemoTest1!`.
-2. **Paywall** — choose a package after signup:
+2. **Paywall** — after signup, choose a package before Moss ID or runs:
+   - **Free demo** — **1** Pair Check on this PC only (device-bound; new accounts on the same
+     computer cannot claim again).
    - **Pair** — `$15` unlocks **15** runs with **max 2 files** per run (Pair Check).
    - **Batch** — `$50` unlocks **50** runs with **multi-file or folder/directory** selection (max 50 files).
    Files are not uploaded at checkout. Prompt 006 historically modeled 40 checks; the Pair package sells 15/2.
+   Local purchase/Moss vault is scoped to the signed-in account so a new signup cannot inherit another
+   user's unlock and skip pricing.
 3. **Connect Moss User ID (BYO)** — after entitlement, customer enters the email used for Moss
    registration, sees the exact `registeruser` / `mail …` body to send themselves to
    `moss@moss.stanford.edu` (never auto-sent), acknowledges, then pastes only the numeric userid.
    Masked display + local vault-style cipher; never sync/logs; purchase IDs are not auth.
 4. **Portal** — unlocked only after Moss User ID is saved. Pair or Batch controls (language, file
    pickers, advanced options, consent, start run). Remaining runs decrement on start (local demo
-   entitlement).
+   entitlement). Exhausted plans return to the paywall.
 5. **Run** — see below. Every started run reaches a terminal state.
 
 ## Run lifecycle (why a run can never hang)
