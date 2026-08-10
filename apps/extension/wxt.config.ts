@@ -61,6 +61,9 @@ export default defineConfig({
       sourcemap: false,
       minify: true,
       target: "chrome120",
+      // Chrome extension pages treat modulepreload as a cross-world mismatch.
+      // Disable so popup.html only loads the entry script (no unused preload warnings).
+      modulePreload: false,
     },
   }),
   zip: {

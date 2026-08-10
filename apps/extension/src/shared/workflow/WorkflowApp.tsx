@@ -203,7 +203,6 @@ export function WorkflowApp() {
   const [themePreference, setThemePreference] = useState<ThemePreference>("system");
   const [persisted, setPersisted] = useState<PersistedState | null>(null);
   const [note, setNote] = useState("Loading…");
-  const [languageQuery, setLanguageQuery] = useState("");
   const [languageCode, setLanguageCode] = useState("");
   const [languageConfirmed, setLanguageConfirmed] = useState(false);
   const [languageHint, setLanguageHint] = useState(
@@ -279,8 +278,8 @@ export function WorkflowApp() {
   );
 
   const languageOptions = useMemo(
-    () => language.searchLanguages(languageQuery, capsPayload),
-    [languageQuery, capsPayload],
+    () => language.searchLanguages("", capsPayload),
+    [capsPayload],
   );
 
   const draftSnapshot = useMemo(
@@ -2117,17 +2116,6 @@ export function WorkflowApp() {
                   : `Mode locked to Pair Check · max ${maxFilesPerRun} files.`}
               </p>
 
-              <label className="stack-field" htmlFor="language-search">
-                <span className="type-label">Search languages</span>
-                <input
-                  id="language-search"
-                  type="search"
-                  value={languageQuery}
-                  onChange={(event) => setLanguageQuery(event.target.value)}
-                  aria-label="Search languages"
-                  autoComplete="off"
-                />
-              </label>
               <label className="stack-field" htmlFor="workspace-language">
                 <span className="type-label">Language</span>
                 <select
