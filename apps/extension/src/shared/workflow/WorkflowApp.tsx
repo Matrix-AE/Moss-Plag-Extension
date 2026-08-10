@@ -1872,9 +1872,10 @@ export function WorkflowApp() {
                 password. Reports never auto-open.
               </p>
               {apiMeta?.livePublicTcp ? (
-                <p className="status status--danger">
-                  API is in live public MOSS mode (cleartext TCP). Production must use the approved
-                  encrypted commercial path instead.
+                <p className="status status--notice">
+                  Hosted BYO mode: the API submits to Stanford MOSS over public TCP using your Moss
+                  User ID and quota. Treat result links as sensitive. An encrypted commercial route is
+                  not available from Stanford for this product yet.
                 </p>
               ) : null}
               <button
