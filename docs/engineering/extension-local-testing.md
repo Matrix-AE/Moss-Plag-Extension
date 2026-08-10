@@ -36,12 +36,15 @@ see [`email-password-auth.md`](./email-password-auth.md).
 4. Select `apps/extension/.output/chrome-mv3`.
 5. Pin the extension.
 6. Click the toolbar icon — the **popup** opens directly (no Side Panel, no new tab).
+7. Once the popup reaches the portal, click **Open run window**. Choose files there, not in the
+   popup: Chrome closes a toolbar popup the moment a file chooser takes focus.
 
 ## What to click through
 
 | Surface | Verify |
 | --- | --- |
-| Popup (~380×580, scroll inside) | Email/password + OTP or Google/Microsoft → paywall (Pair $15/15 runs/2 files or Batch $50/50 runs multi-file/folder, no upload yet) → **Connect Moss User ID** → Pair or Batch portal |
+| Popup (~380×580, scroll inside) | Email/password + OTP or Google/Microsoft → paywall (free demo once per PC, Pair $15/15 runs/2 files, or Batch $50/50 runs multi-file/folder, no upload yet) → **Connect Moss User ID** → **Open run window** |
+| Run window | Step 1 language dropdown (picking it is the confirmation — no confirm button), step 2 file tiles showing the chosen names, step 3 consents with **Start** right below them and a second Start at the top. Selecting a file must never blank the window. |
 | Hosted result path | With Railway healthy, Start creates a job on the hosted API, uploads both files, hands off the Moss userid, finalizes, and polls status. On success it shows a real report link. Nothing auto-opens. |
 | Offline demo fallback | If the hosted API is unreachable, Start explains status. **Run offline demo instead** still produces a local `report.html` link labelled as a demo (no MOSS query). |
 | Past results | Successful runs appear under **Past results** on this device for reopen/copy/share. |
@@ -59,4 +62,5 @@ Railway deploy: [`deploy-railway.md`](./deploy-railway.md)
 ```bash
 npm test
 npm run check:extension
+npm run test:e2e:chrome   # real Chrome, walks popup → run window → Start (add -- --shots shots/)
 ```

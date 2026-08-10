@@ -6,6 +6,10 @@ import "@moss/ui/typography.css";
 import "@moss/ui/interaction.css";
 import "../../styles/base.css";
 import { Workspace } from "./Workspace";
+import { ErrorBoundary } from "../../shared/ErrorBoundary";
+import { applyTheme, loadThemePreference } from "../../shared/theme";
+
+void loadThemePreference().then(applyTheme);
 
 const container = document.getElementById("root");
 if (!container) {
@@ -14,6 +18,8 @@ if (!container) {
 
 createRoot(container).render(
   <StrictMode>
-    <Workspace />
+    <ErrorBoundary>
+      <Workspace />
+    </ErrorBoundary>
   </StrictMode>,
 );

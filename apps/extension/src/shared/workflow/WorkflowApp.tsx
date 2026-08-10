@@ -14,6 +14,7 @@ import * as resultUx from "@moss/ui/result-experience";
 import type { RunState } from "@moss/ui/run-lifecycle";
 
 import { sendShellMessage } from "../shell-client";
+import { openRunWindow } from "../run-window";
 import type { PersistedState } from "../state-types";
 import {
   OFFER,
@@ -72,6 +73,8 @@ import { GoogleIcon, MicrosoftIcon } from "../social-icons";
 type Gate = "loading" | "auth" | "paywall" | "moss-id" | "portal";
 type AuthMode = "signin" | "create";
 type MossIdStep = "register" | "enter-id";
+/** `popup` is the toolbar panel; `page` is the run window that survives file dialogs. */
+export type Surface = "popup" | "page";
 
 type LocalItem = {
   id?: string;
@@ -105,6 +108,12 @@ const RUN_STEPS: ReadonlyArray<{ phase: string; label: string }> = [
   { phase: "queue", label: "Queue" },
   { phase: "submit", label: "Submit" },
   { phase: "wait", label: "Wait for report" },
+];
+
+/** Pair Check always has exactly these two tiles, so they are declared once. */
+const PAIR_SLOTS: ReadonlyArray<{ index: number; title: string; ariaLabel: string }> = [
+  { index: 0, title: "File 1", ariaLabel: "Choose first file" },
+  { index: 1, title: "File 2", ariaLabel: "Choose second file" },
 ];
 
 function formatClock(timestamp: number): string {
@@ -178,7 +187,8 @@ function BrandMark() {
   );
 }
 
-export function WorkflowApp() {
+export function WorkflowApp({ surface = "popup" }: { surface?: Surface } = {}) {
+  const isPopup = surface === "popup";
   const capsPayload = useMemo(
     () => language.normalizeCapabilities(language.createMossCapabilitiesFixture()).capabilities,
     [],
@@ -206,7 +216,7 @@ export function WorkflowApp() {
   const [languageCode, setLanguageCode] = useState("");
   const [languageConfirmed, setLanguageConfirmed] = useState(false);
   const [languageHint, setLanguageHint] = useState(
-    "Languages come from server capabilities. Suggestions still need confirmation.",
+    "Pick the language of these files. Choosing it here is the confirmation.",
   );
   const [sourceItems, setSourceItems] = useState<LocalItem[]>([]);
   /** Browser File handles kept only in memory for upload — never persisted. */
@@ -355,18 +365,25 @@ export function WorkflowApp() {
         mossConnected: isMossConnected(nextMoss),
       });
       setGate(next);
+      // Each gate needs its own opening line; a stale message reads like a wrong instruction.
+      setGateMessage(
+        next === "auth"
+          ? "Sign in or create an account. Files stay on this device until you choose a plan."
+          : next === "paywall"
+            ? "Choose a plan to continue. Nothing is uploaded at checkout."
+            : next === "moss-id"
+              ? "Connect your Moss User ID to unlock checks."
+              : `${nextEntitlement?.remaining ?? 0} of ${nextEntitlement?.total ?? 0} runs left. Nothing is uploaded until you start a check.`,
+      );
     },
     [],
   );
 
   const refreshSession = useCallback(async () => {
-    const [authSession, nextHistory, trialStatus] = await Promise.all([
-      loadAuthSession(),
-      loadResultHistory(),
-      loadDeviceTrialStatus(),
-    ]);
+    const [authSession, nextHistory] = await Promise.all([loadAuthSession(), loadResultHistory()]);
     const nextAccount = authSession ? sessionToAccount(authSession) : null;
-    setDeviceTrial(trialStatus);
+    // Trial status needs the API; never let that round trip hold the first paint on "Loading…".
+    void loadDeviceTrialStatus().then(setDeviceTrial);
 
     let nextEntitlement: DemoEntitlement | null = null;
     let nextMoss: DemoMossCredential | null = null;
@@ -903,10 +920,16 @@ export function WorkflowApp() {
     setGateMessage("Signed out. Sign in again to continue.");
   };
 
-  const applyLanguage = (code: string, { confirm = false } = {}) => {
+  /**
+   * A language the customer picks from capabilities is already deliberate, so the selection
+   * itself is the confirmation. Guesses from file names only ever become a hint.
+   */
+  const applyLanguage = (code: string) => {
     if (!code) {
       setLanguageCode("");
       setLanguageConfirmed(false);
+      setLanguageHint("Pick the language of these files. Choosing it here is the confirmation.");
+      resetConsent();
       return;
     }
     const resolved = language.resolveManualSelection(code, capsPayload);
@@ -915,16 +938,16 @@ export function WorkflowApp() {
       return;
     }
     setLanguageCode(resolved.code);
-    setLanguageConfirmed(confirm);
-    setLanguageHint(
-      confirm
-        ? `${resolved.label} confirmed for this check.`
-        : `Selected ${resolved.label}. Confirm before continuing — guesses are never submitted silently.`,
-    );
+    setLanguageConfirmed(true);
+    setLanguageHint(`${resolved.label} selected for this check.`);
     resetConsent();
   };
 
-  const onSourceFiles = (files: File[]) => {
+  /**
+   * `slot` is a Pair Check tile. Picking into a filled tile replaces that file in place so the
+   * customer never has to remove one before swapping it.
+   */
+  const onSourceFiles = (files: File[], slot?: number) => {
     if (!entitled) {
       setNote("Purchase required before selecting files for a run.");
       return;
@@ -934,7 +957,8 @@ export function WorkflowApp() {
       setGate("moss-id");
       return;
     }
-    const room = maxFilesPerRun - sourceItems.length;
+    const replacing = typeof slot === "number" && slot < sourceItems.length;
+    const room = maxFilesPerRun - sourceItems.length + (replacing ? 1 : 0);
     if (room <= 0) {
       setNote(
         comparisonMode === "batch"
@@ -944,8 +968,9 @@ export function WorkflowApp() {
       return;
     }
     const capped = files.slice(0, room);
+    const keptItems = replacing ? sourceItems.filter((_, i) => i !== slot) : sourceItems;
     const result = intake.ingestSelection(capped, {
-      existing: [...sourceItems, ...baseItems],
+      existing: [...keptItems, ...baseItems],
       asBase: false,
       consentGranted: false,
     });
@@ -966,7 +991,10 @@ export function WorkflowApp() {
       });
     }
     accepted = accepted.slice(0, room);
-    const nextSources = [...sourceItems, ...accepted].slice(0, maxFilesPerRun);
+    if (!accepted.length) {
+      setNote("That selection was not accepted. Nothing changed.");
+      return;
+    }
     const matchedFiles: File[] = [];
     for (const item of accepted) {
       const byKey = capped.find((entry) => {
@@ -980,26 +1008,36 @@ export function WorkflowApp() {
       });
       if (byKey) matchedFiles.push(byKey);
     }
+    if (replacing && !matchedFiles.length) {
+      setNote("That file could not be read. The previous choice is unchanged.");
+      return;
+    }
+    const nextSources = replacing
+      ? sourceItems.map((item, i) => (i === slot ? (accepted[0] as LocalItem) : item))
+      : [...sourceItems, ...accepted].slice(0, maxFilesPerRun);
+    const nextFiles = replacing
+      ? sourceFiles.map((file, i) => (i === slot ? (matchedFiles[0] as File) : file))
+      : [...sourceFiles, ...matchedFiles].slice(0, maxFilesPerRun);
     setSourceItems(nextSources);
-    setSourceFiles((prev) => [...prev, ...matchedFiles].slice(0, maxFilesPerRun));
+    setSourceFiles(nextFiles);
     rebuildGroups(nextSources, comparisonMode);
     const suggestion = language.suggestLanguage(
       nextSources.map((item) => ({ displayName: item.displayName })),
       capsPayload,
     );
-    if (suggestion.suggestion && !languageConfirmed) {
-      setLanguageCode(suggestion.suggestion.code);
-      setLanguageConfirmed(false);
-      setLanguageHint(suggestion.guidance || "Confirm the suggested language before continuing.");
-    } else if (suggestion.guidance) {
-      setLanguageHint(suggestion.guidance);
+    if (suggestion.suggestion && !languageCode) {
+      setLanguageHint(
+        `These files look like ${suggestion.suggestion.label}. Pick it in the language list to use it.`,
+      );
     }
     setNote(
-      `Added ${accepted.length} local file(s) (${nextSources.length}/${maxFilesPerRun}). Nothing uploaded.`,
+      `${nextSources.length} of ${maxFilesPerRun} files chosen. Nothing has left this device.`,
     );
     resetConsent();
-    if (files.length > capped.length || nextSources.length >= maxFilesPerRun) {
-      setGateMessage(`Max ${maxFilesPerRun} files per run for this offer.`);
+    if (files.length > capped.length) {
+      setGateMessage(
+        `Only the first ${capped.length} file(s) were kept — this plan allows ${maxFilesPerRun} per run.`,
+      );
     }
   };
 
@@ -1009,6 +1047,15 @@ export function WorkflowApp() {
     setSourceFiles((prev) => prev.filter((_, i) => i !== index));
     rebuildGroups(next);
     resetConsent();
+    setNote(`${next.length} of ${maxFilesPerRun} files chosen. Nothing has left this device.`);
+  };
+
+  const clearSources = () => {
+    setSourceItems([]);
+    setSourceFiles([]);
+    rebuildGroups([]);
+    resetConsent();
+    setNote(`0 of ${maxFilesPerRun} files chosen. Nothing has left this device.`);
   };
 
   const onBaseFiles = (files: File[]) => {
@@ -1065,7 +1112,7 @@ export function WorkflowApp() {
       return;
     }
     if (!languageCode || !languageConfirmed) {
-      setGateMessage("Confirm a language from capabilities before starting.");
+      setGateMessage("Choose the language of these files before starting.");
       return;
     }
     const filledGroups = groups.filter((group) => Array.isArray(group.files) && group.files.length > 0);
@@ -1436,6 +1483,119 @@ export function WorkflowApp() {
               ? "No runs left on this plan. Return to pricing to unlock more."
               : `${runsLeft} of ${entitlement?.total ?? OFFER.runs} runs left · ${planLabel} · max ${maxFilesPerRun} files`;
 
+  const onOpenRunWindow = async () => {
+    const opened = await openRunWindow();
+    setGateMessage(
+      opened.ok
+        ? "Run window opened. Pick your files there — this panel can be closed."
+        : opened.error || "Could not open the run window.",
+    );
+  };
+
+  const filesReady =
+    comparisonMode === "pair" ? sourceItems.length === maxFilesPerRun : sourceItems.length >= 2;
+  const consentsReady = ownership && sensitiveLink;
+  const warningsReady = preflightResult.warnings.length === 0 || warningsAck;
+  const startBlocker = !mossConnected
+    ? "Connect your Moss User ID first."
+    : runsLeft < 1
+      ? "No runs left on this plan."
+      : !filesReady
+        ? comparisonMode === "pair"
+          ? `Choose ${maxFilesPerRun} files (${sourceItems.length} chosen).`
+          : `Choose at least 2 files (${sourceItems.length} chosen).`
+        : !languageConfirmed
+          ? "Choose the language of these files."
+          : !consentsReady
+            ? "Tick both confirmations below."
+            : !warningsReady
+              ? "Acknowledge the preflight warnings."
+              : "";
+
+  const startLabel = progressPhase
+    ? "Working…"
+    : comparisonMode === "batch"
+      ? "Start Batch Check"
+      : "Start Pair Check";
+
+  /** Same action at the top of the run window and again under the consents. */
+  const renderStartButton = (position: "header" | "footer") => (
+    <div className="start-block" data-start-position={position}>
+      <button
+        type="button"
+        className="cta cta--primary"
+        disabled={progressPhase || Boolean(startBlocker)}
+        onClick={() => {
+          setAllowOfflineDemo(false);
+          void tryStartJob();
+        }}
+      >
+        {startLabel}
+      </button>
+      {startBlocker && !progressPhase ? <p className="status">{startBlocker}</p> : null}
+    </div>
+  );
+
+  /** Device-only result history — shown last in the run window, first in the popup. */
+  const historyCard = (
+    <section className="card" aria-labelledby="history-heading">
+      <div className="row section-head">
+        <h2 id="history-heading">Past results</h2>
+        {resultHistory.length > 0 ? (
+          <button type="button" className="secondary" onClick={() => void clearHistory()}>
+            Clear all
+          </button>
+        ) : null}
+      </div>
+      <p className="status">
+        Saved on this device only. Treat each link like a password — anyone with it can open the
+        report. Share a link with a student when you want them to review that run.
+      </p>
+      {resultHistory.length === 0 ? (
+        <p className="status">No saved results yet. Successful Pair Checks appear here.</p>
+      ) : (
+        <ul className="file-list">
+          {resultHistory.map((entry) => (
+            <li key={entry.id} className="file-row">
+              <div className="stack-field">
+                <span className="type-label">
+                  {entry.label}
+                  {entry.language ? ` · ${entry.language}` : ""}
+                  {entry.mode === "demo" ? " · demo" : ""}
+                </span>
+                <span className="status">{formatClock(entry.createdAt)}</span>
+                <a href={entry.reportUrl} target="_blank" rel="noreferrer noopener">
+                  Open report
+                </a>
+              </div>
+              <div className="row wrap">
+                <button
+                  type="button"
+                  className="secondary"
+                  onClick={() => {
+                    void navigator.clipboard.writeText(entry.reportUrl).then(
+                      () => setLinkNote("Past result link copied. Clipboard may keep a copy."),
+                      () => setLinkNote("Copy was blocked by the browser."),
+                    );
+                  }}
+                >
+                  Copy
+                </button>
+                <button
+                  type="button"
+                  className="secondary"
+                  onClick={() => void removeHistoryEntry(entry.id)}
+                >
+                  Remove
+                </button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+
   if (gate === "loading") {
     return (
       <div className="shell shell--popup" role="status">
@@ -1445,13 +1605,17 @@ export function WorkflowApp() {
   }
 
   return (
-    <div className="shell shell--popup" data-gate={gate}>
+    <div
+      className={isPopup ? "shell shell--popup" : "shell shell--page"}
+      data-gate={gate}
+      data-surface={surface}
+    >
       <header className="popup-header" role="banner">
         <div className="brand-row">
           <BrandMark />
           <div className="brand-copy">
             <h1>PairProof</h1>
-            <p className="brand-kicker">SIMILARITY, VERIFIED</p>
+            <p className="brand-kicker">{isPopup ? "SIMILARITY, VERIFIED" : "RUN WINDOW"}</p>
           </div>
           <button
             type="button"
@@ -1465,7 +1629,7 @@ export function WorkflowApp() {
         </div>
       </header>
 
-      <main className="popup-main" role="main">
+      <main className={isPopup ? "popup-main" : "page-main"} role="main">
         <section className="card status-card" aria-labelledby="status-heading">
           <div className="status-dots" aria-hidden="true">
             <span />
@@ -1723,17 +1887,16 @@ export function WorkflowApp() {
             <div className="paywall-panel">
               <div className="plan-grid">
                 <article className="plan-card" data-plan="trial">
-                  <h3>{PLANS.trial.name}</h3>
-                  <p className="plan-price">
-                    <strong>$0</strong>
-                    <span> this PC only</span>
+                  <div className="plan-card__head">
+                    <h3>{PLANS.trial.name}</h3>
+                    <p className="plan-price">
+                      <strong>$0</strong>
+                      <span> this PC</span>
+                    </p>
+                  </div>
+                  <p className="status">
+                    {PLANS.trial.runs} Pair Check · {PLANS.trial.blurb}
                   </p>
-                  <ul className="offer-list">
-                    <li>
-                      <strong>{PLANS.trial.runs}</strong> Pair Check
-                    </li>
-                    <li>{PLANS.trial.blurb}</li>
-                  </ul>
                   <button
                     type="button"
                     className="cta"
@@ -1745,20 +1908,16 @@ export function WorkflowApp() {
                 </article>
                 {PLAN_LIST.map((plan) => (
                   <article key={plan.id} className="plan-card" data-plan={plan.id}>
-                    <h3>{plan.name}</h3>
-                    <p className="plan-price">
-                      <strong>${plan.priceUsd}</strong>
-                      <span> one-time</span>
+                    <div className="plan-card__head">
+                      <h3>{plan.name}</h3>
+                      <p className="plan-price">
+                        <strong>${plan.priceUsd}</strong>
+                        <span> once</span>
+                      </p>
+                    </div>
+                    <p className="status">
+                      {plan.runs} runs · max {plan.maxFilesPerRun} files per run · {plan.blurb}
                     </p>
-                    <ul className="offer-list">
-                      <li>
-                        <strong>{plan.runs}</strong> hosted similarity runs
-                      </li>
-                      <li>{plan.blurb}</li>
-                      <li>
-                        Max <strong>{plan.maxFilesPerRun}</strong> files per run
-                      </li>
-                    </ul>
                     <button
                       type="button"
                       className={plan.id === "batch" ? "cta" : "secondary"}
@@ -1866,50 +2025,49 @@ export function WorkflowApp() {
 
           {gate === "portal" ? (
             <div className="portal-cta">
-              <p className="status status--notice">
-                Starting a check uploads your two files to the hosted API and then to MOSS. A live run
-                uses your Moss User ID and quota. The result link is sensitive — treat it like a
-                password. Reports never auto-open.
-              </p>
-              {apiMeta?.livePublicTcp ? (
-                <p className="status status--notice">
-                  Hosted BYO mode: the API submits to Stanford MOSS over public TCP using your Moss
-                  User ID and quota. Treat result links as sensitive. An encrypted commercial route is
-                  not available from Stanford for this product yet.
-                </p>
-              ) : null}
-              <button
-                type="button"
-                className="cta"
-                disabled={progressPhase || runsLeft < 1 || !mossConnected}
-                onClick={() => {
-                  setAllowOfflineDemo(false);
-                  void tryStartJob();
-                }}
-              >
-                {progressPhase
-                  ? "Working…"
-                  : !mossConnected
-                    ? "Connect Moss ID"
-                    : runsLeft < 1
-                      ? "No runs left"
-                      : comparisonMode === "batch"
-                        ? "Start Batch Check"
-                        : "Start Pair Check"}
-              </button>
-              {gateMessage.includes("Hosted API") && gateMessage.includes("unreachable") ? (
-                <button
-                  type="button"
-                  className="secondary"
-                  disabled={progressPhase || runsLeft < 1}
-                  onClick={() => {
-                    setAllowOfflineDemo(true);
-                    void tryStartJob({ forceOfflineDemo: true });
-                  }}
-                >
-                  Run offline demo instead
-                </button>
-              ) : null}
+              {isPopup ? (
+                <>
+                  <p className="status">
+                    Choose files and start the check in the run window. Chrome closes this small panel
+                    the moment a file chooser opens, so the run gets its own window that stays put.
+                  </p>
+                  <button type="button" className="cta cta--primary" onClick={() => void onOpenRunWindow()}>
+                    Open run window
+                  </button>
+                  <p className="status">
+                    Moss User ID connected · {mossCredential?.display || providerIdMasked}
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="status status--notice">
+                    Starting a check uploads your files to the hosted API and then to MOSS. A live run
+                    uses your Moss User ID and quota. The result link is sensitive — treat it like a
+                    password. Reports never auto-open.
+                  </p>
+                  {apiMeta?.livePublicTcp ? (
+                    <p className="status status--notice">
+                      Hosted BYO mode: the API submits to Stanford MOSS over public TCP using your
+                      Moss User ID and quota. Treat result links as sensitive. An encrypted commercial
+                      route is not available from Stanford for this product yet.
+                    </p>
+                  ) : null}
+                  {renderStartButton("header")}
+                  {gateMessage.includes("Hosted API") && gateMessage.includes("unreachable") ? (
+                    <button
+                      type="button"
+                      className="secondary"
+                      disabled={progressPhase || runsLeft < 1}
+                      onClick={() => {
+                        setAllowOfflineDemo(true);
+                        void tryStartJob({ forceOfflineDemo: true });
+                      }}
+                    >
+                      Run offline demo instead
+                    </button>
+                  ) : null}
+                </>
+              )}
               <p className="status status-inline">
                 <span className="status-dot" aria-hidden="true" />
                 {gateMessage}
@@ -2041,84 +2199,24 @@ export function WorkflowApp() {
           </section>
         ) : null}
 
-        {gate === "portal" ? (
-          <section className="card" aria-labelledby="history-heading">
-            <div className="row section-head">
-              <h2 id="history-heading">Past results</h2>
-              {resultHistory.length > 0 ? (
-                <button type="button" className="secondary" onClick={() => void clearHistory()}>
-                  Clear all
-                </button>
-              ) : null}
-            </div>
-            <p className="status">
-              Saved on this device only. Treat each link like a password — anyone with it can open the
-              report. Share a link with a student when you want them to review that run.
-            </p>
-            {resultHistory.length === 0 ? (
-              <p className="status">No saved results yet. Successful Pair Checks appear here.</p>
-            ) : (
-              <ul className="file-list">
-                {resultHistory.map((entry) => (
-                  <li key={entry.id} className="file-row">
-                    <div className="stack-field">
-                      <span className="type-label">
-                        {entry.label}
-                        {entry.language ? ` · ${entry.language}` : ""}
-                        {entry.mode === "demo" ? " · demo" : ""}
-                      </span>
-                      <span className="status">{formatClock(entry.createdAt)}</span>
-                      <a href={entry.reportUrl} target="_blank" rel="noreferrer noopener">
-                        Open report
-                      </a>
-                    </div>
-                    <div className="row wrap">
-                      <button
-                        type="button"
-                        className="secondary"
-                        onClick={() => {
-                          void navigator.clipboard.writeText(entry.reportUrl).then(
-                            () => setLinkNote("Past result link copied. Clipboard may keep a copy."),
-                            () => setLinkNote("Copy was blocked by the browser."),
-                          );
-                        }}
-                      >
-                        Copy
-                      </button>
-                      <button
-                        type="button"
-                        className="secondary"
-                        onClick={() => void removeHistoryEntry(entry.id)}
-                      >
-                        Remove
-                      </button>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
-        ) : null}
+        {gate === "portal" && isPopup ? historyCard : null}
 
-        {gate === "portal" ? (
+        {gate === "portal" && !isPopup ? (
           <>
-            <section className="card controls-card" aria-labelledby="controls-heading">
+            <section className="card step-card" aria-labelledby="step-language">
               <div className="row section-head">
-                <h2 id="controls-heading">{comparisonMode === "batch" ? "Batch Check" : "Pair Check"}</h2>
-                <InfoTip label={comparisonMode === "batch" ? "About Batch Check" : "About Pair Check"}>
-                  {comparisonMode === "batch"
-                    ? "Batch compares multiple files or folder/directory selections in one run. Pair stays limited to two files."
-                    : "This offer compares exactly two files per run. Upgrade to Batch for multi-file or folder selection."}
-                </InfoTip>
+                <h2 id="step-language">
+                  <span className="step-badge" aria-hidden="true">
+                    1
+                  </span>
+                  Language
+                </h2>
+                <span className="badge" data-ready={languageConfirmed}>
+                  {languageConfirmed ? languageCode : "not set"}
+                </span>
               </div>
-              <p className="status">
-                {comparisonMode === "batch"
-                  ? `Batch mode · multi-file or folder · max ${maxFilesPerRun} files.`
-                  : `Mode locked to Pair Check · max ${maxFilesPerRun} files.`}
-              </p>
-
               <label className="stack-field" htmlFor="workspace-language">
-                <span className="type-label">Language</span>
+                <span className="type-label">Programming language</span>
                 <select
                   id="workspace-language"
                   aria-label="Programming language"
@@ -2133,49 +2231,59 @@ export function WorkflowApp() {
                   ))}
                 </select>
               </label>
-              <div className="row">
-                <p className="status">{languageHint}</p>
-                <button
-                  type="button"
-                  className="secondary"
-                  disabled={!languageCode || languageConfirmed}
-                  onClick={() => applyLanguage(languageCode, { confirm: true })}
-                >
-                  Confirm language
-                </button>
+              <p className="status">{languageHint}</p>
+            </section>
+
+            <section className="card step-card" aria-labelledby="step-files">
+              <div className="row section-head">
+                <h2 id="step-files">
+                  <span className="step-badge" aria-hidden="true">
+                    2
+                  </span>
+                  {comparisonMode === "batch" ? "Files or folder" : "Two files"}
+                </h2>
+                <span className="badge" data-ready={filesReady}>
+                  {sourceItems.length}/{maxFilesPerRun}
+                </span>
               </div>
+              <p className="status">
+                {comparisonMode === "batch"
+                  ? `Batch mode · multi-file or folder · max ${maxFilesPerRun} files. Files stay on this device until you start.`
+                  : `Pair Check compares exactly two files. Files stay on this device until you start.`}
+              </p>
 
               <div className="file-pickers">
                 {comparisonMode === "pair" ? (
                   <>
-                    <label className="file-button">
-                      File 1
-                      <input
-                        type="file"
-                        aria-label="Choose first file"
-                        onChange={(event) => {
-                          onSourceFiles(fileListFromInput(event));
-                          event.target.value = "";
-                        }}
-                      />
-                    </label>
-                    <label className="file-button">
-                      File 2
-                      <input
-                        type="file"
-                        aria-label="Choose second file"
-                        disabled={sourceItems.length >= maxFilesPerRun}
-                        onChange={(event) => {
-                          onSourceFiles(fileListFromInput(event));
-                          event.target.value = "";
-                        }}
-                      />
-                    </label>
+                    {PAIR_SLOTS.map((slot) => (
+                      <label
+                        key={slot.index}
+                        className="file-button file-button--drop"
+                        data-filled={Boolean(sourceItems[slot.index])}
+                      >
+                        <span className="file-button__title">{slot.title}</span>
+                        <span className="file-button__name">
+                          {sourceItems[slot.index]?.displayName || "Choose a file"}
+                        </span>
+                        <span className="file-button__hint">
+                          {sourceItems[slot.index] ? "Click to replace" : "No file yet"}
+                        </span>
+                        <input
+                          type="file"
+                          aria-label={slot.ariaLabel}
+                          onChange={(event) => {
+                            onSourceFiles(fileListFromInput(event), slot.index);
+                            event.target.value = "";
+                          }}
+                        />
+                      </label>
+                    ))}
                   </>
                 ) : (
                   <>
-                    <label className="file-button">
-                      Multi-file
+                    <label className="file-button file-button--drop">
+                      <span className="file-button__title">Files</span>
+                      <span className="file-button__name">Choose several files</span>
                       <input
                         type="file"
                         multiple
@@ -2188,8 +2296,9 @@ export function WorkflowApp() {
                       />
                     </label>
                     {allowsDirectory ? (
-                      <label className="file-button">
-                        Folder
+                      <label className="file-button file-button--drop">
+                        <span className="file-button__title">Folder</span>
+                        <span className="file-button__name">Choose a folder</span>
                         <input
                           type="file"
                           multiple
@@ -2208,17 +2317,108 @@ export function WorkflowApp() {
                   </>
                 )}
               </div>
-              <ul className="file-list" aria-label="Selected source files">
-                {sourceItems.map((item, index) => (
-                  <li key={`${item.displayName}-${index}`} className="file-row">
-                    <span>{item.displayName}</span>
-                    <button type="button" className="secondary" onClick={() => removeSource(index)}>
-                      Remove
-                    </button>
-                  </li>
-                ))}
-              </ul>
+              {comparisonMode === "pair" ? null : (
+                <ul className="file-list" aria-label="Selected source files">
+                  {sourceItems.map((item, index) => (
+                    <li key={`${item.displayName}-${index}`} className="file-row">
+                      <span>{item.displayName}</span>
+                      <button
+                        type="button"
+                        className="secondary"
+                        onClick={() => removeSource(index)}
+                      >
+                        Remove
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {comparisonMode === "pair" && sourceItems.length ? (
+                <div className="row wrap">
+                  <button type="button" className="secondary" onClick={() => clearSources()}>
+                    Clear both files
+                  </button>
+                </div>
+              ) : null}
               <p className="status">{note}</p>
+            </section>
+
+            <section className="card step-card" aria-labelledby="step-start">
+              <div className="row section-head">
+                <h2 id="step-start">
+                  <span className="step-badge" aria-hidden="true">
+                    3
+                  </span>
+                  Review consents and start
+                </h2>
+                <InfoTip label={comparisonMode === "batch" ? "About Batch Check" : "About Pair Check"}>
+                  {comparisonMode === "batch"
+                    ? "Batch compares multiple files or folder/directory selections in one run. Pair stays limited to two files."
+                    : "This plan compares exactly two files per run. Batch adds multi-file and folder selection."}
+                </InfoTip>
+              </div>
+              <div className="review-summary" aria-label="Review summary">
+                <p className="status">
+                  {reviewSummary.mode} · {reviewSummary.language || "language unset"} ·{" "}
+                  {reviewSummary.groups?.length || 0} submissions · {runsLeft} runs left
+                </p>
+              </div>
+
+              <div className="preflight" role="region" aria-label="Preflight findings">
+                <h3>Preflight</h3>
+                {!filesReady ? (
+                  <p className="status">Findings appear once your files are selected.</p>
+                ) : preflightResult.errors.length === 0 && preflightResult.warnings.length === 0 ? (
+                  <p className="status">No blocking findings. Nothing has been uploaded yet.</p>
+                ) : (
+                  <ul>
+                    {preflightResult.errors.map((item) => (
+                      <li key={item.code}>
+                        <strong>Block:</strong> {item.message}
+                      </li>
+                    ))}
+                    {preflightResult.warnings.map((item) => (
+                      <li key={item.code}>
+                        <strong>Warning:</strong> {item.message}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+              {preflightResult.warnings.length > 0 ? (
+                <label className="row consent-row">
+                  <input
+                    type="checkbox"
+                    checked={warningsAck}
+                    onChange={(event) => setWarningsAck(event.target.checked)}
+                  />
+                  <span>
+                    I acknowledge these warnings. Acknowledgements reset after material changes.
+                  </span>
+                </label>
+              ) : null}
+
+              <label className="row consent-row">
+                <input
+                  type="checkbox"
+                  checked={ownership}
+                  onChange={(event) => setOwnership(event.target.checked)}
+                />
+                <span>I confirm I have the right to submit these files.</span>
+              </label>
+              <label className="row consent-row">
+                <input
+                  type="checkbox"
+                  checked={sensitiveLink}
+                  onChange={(event) => setSensitiveLink(event.target.checked)}
+                />
+                <span>I understand the report link is sensitive like a password.</span>
+              </label>
+              <p className="status">
+                Upload starts only after entitlement and recorded consent.
+                {" The extension never opens raw provider TCP."}
+              </p>
+              {renderStartButton("footer")}
             </section>
 
             <section className="card" aria-labelledby="advanced-heading">
@@ -2329,101 +2529,6 @@ export function WorkflowApp() {
               ) : null}
             </section>
 
-            <section className="card" aria-labelledby="account-heading">
-              <button
-                type="button"
-                className="disclosure"
-                aria-expanded={accountOpen}
-                onClick={() => setAccountOpen((value) => !value)}
-              >
-                <h2 id="account-heading">Account</h2>
-                <span>{accountOpen ? "Hide" : "Show"}</span>
-              </button>
-              {accountOpen ? (
-                <div className="disclosure-body">
-                  <p className="status">Signed in as {account?.email}</p>
-                  <p className="status">
-                    BYO Moss User ID is connected after entitlement. It is never authentication for
-                    this extension, never written to sync storage or logs, and uses local vault-style
-                    storage (masked display + obfuscated cipher only).
-                  </p>
-                  <p className="status">
-                    Connected ID:{" "}
-                    <strong>{providerIdMasked || mossCredential?.display || "Not connected"}</strong>
-                  </p>
-                  <div className="row wrap">
-                    <button type="button" className="secondary" onClick={() => void onDisconnectMossId()}>
-                      Replace Moss ID
-                    </button>
-                    <button type="button" className="secondary" onClick={() => void onSignOut()}>
-                      Sign out
-                    </button>
-                  </div>
-                </div>
-              ) : null}
-            </section>
-
-            <section className="card" aria-labelledby="preflight-heading">
-              <h2 id="preflight-heading">Preflight</h2>
-              <div className="preflight" role="region" aria-label="Preflight findings">
-                {preflightResult.errors.length === 0 && preflightResult.warnings.length === 0 ? (
-                  <p className="status">Blocking and warning findings appear here before upload.</p>
-                ) : (
-                  <ul>
-                    {preflightResult.errors.map((item) => (
-                      <li key={item.code}>
-                        <strong>Block:</strong> {item.message}
-                      </li>
-                    ))}
-                    {preflightResult.warnings.map((item) => (
-                      <li key={item.code}>
-                        <strong>Warning:</strong> {item.message}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-              {preflightResult.warnings.length > 0 ? (
-                <label className="row">
-                  <input
-                    type="checkbox"
-                    checked={warningsAck}
-                    onChange={(event) => setWarningsAck(event.target.checked)}
-                  />
-                  <span>I acknowledge these warnings. Acknowledgements reset after material changes.</span>
-                </label>
-              ) : null}
-            </section>
-
-            <section className="card" aria-labelledby="review-gate">
-              <h2 id="review-gate">Review consents</h2>
-              <div className="review-summary" aria-label="Review summary">
-                <p className="status">
-                  {reviewSummary.mode} · {reviewSummary.language || "language unset"} ·{" "}
-                  {reviewSummary.groups?.length || 0} groups · {runsLeft} runs left
-                </p>
-              </div>
-              <label className="row consent-row">
-                <input
-                  type="checkbox"
-                  checked={ownership}
-                  onChange={(event) => setOwnership(event.target.checked)}
-                />
-                <span>I confirm I have the right to submit these files.</span>
-              </label>
-              <label className="row consent-row">
-                <input
-                  type="checkbox"
-                  checked={sensitiveLink}
-                  onChange={(event) => setSensitiveLink(event.target.checked)}
-                />
-                <span>I understand the report link is sensitive like a password.</span>
-              </label>
-              <p className="status">
-                Upload starts only after entitlement and recorded consent. The extension never opens raw provider TCP.
-              </p>
-            </section>
-
             {persisted?.activeJob || persisted?.draft ? (
               <section className="card" aria-labelledby="recoverable">
                 <h2 id="recoverable">Recoverable state</h2>
@@ -2439,6 +2544,44 @@ export function WorkflowApp() {
               </section>
             ) : null}
           </>
+        ) : null}
+
+        {gate === "portal" && !isPopup ? historyCard : null}
+
+        {gate === "portal" ? (
+          <section className="card" aria-labelledby="account-heading">
+            <button
+              type="button"
+              className="disclosure"
+              aria-expanded={accountOpen}
+              onClick={() => setAccountOpen((value) => !value)}
+            >
+              <h2 id="account-heading">Account</h2>
+              <span>{accountOpen ? "Hide" : "Show"}</span>
+            </button>
+            {accountOpen ? (
+              <div className="disclosure-body">
+                <p className="status">Signed in as {account?.email}</p>
+                <p className="status">
+                  BYO Moss User ID is connected after entitlement. It is never authentication for
+                  this extension, never written to sync storage or logs, and uses local vault-style
+                  storage (masked display + obfuscated cipher only).
+                </p>
+                <p className="status">
+                  Connected ID:{" "}
+                  <strong>{providerIdMasked || mossCredential?.display || "Not connected"}</strong>
+                </p>
+                <div className="row wrap">
+                  <button type="button" className="secondary" onClick={() => void onDisconnectMossId()}>
+                    Replace Moss ID
+                  </button>
+                  <button type="button" className="secondary" onClick={() => void onSignOut()}>
+                    Sign out
+                  </button>
+                </div>
+              </div>
+            ) : null}
+          </section>
         ) : null}
       </main>
 

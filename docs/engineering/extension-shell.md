@@ -14,16 +14,33 @@
 
 | Surface | Entry point | Purpose |
 | --- | --- | --- |
-| Popup | `src/entrypoints/popup` → `popup.html` | Primary product surface: account, paywall, Pair Check workflow |
+| Popup | `src/entrypoints/popup` → `popup.html` | Toolbar panel: account, pricing, Moss ID, run status, and the button that opens the run window |
+| Run window | `src/entrypoints/workspace` → `workspace.html` | File selection, language, consents, and the run itself |
 | Settings | `src/entrypoints/settings` → `settings.html` | Origins, permissions in use, account notes (embedded options UI) |
 | Local demo report | `src/entrypoints/report` → `report.html` | Destination of the demo result link; states plainly that it is not a MOSS report |
 | Service worker | `src/entrypoints/background.ts` → `background.js` | Message router, storage owner; Side Panel open-on-action stays off |
 
 The toolbar action opens the compact popup (`action.default_popup`). Side Panel is not the
-primary surface (`openPanelOnActionClick: false`). The shell never opens `workspace.html` in a new
-tab. The service worker is suspended aggressively, so it never holds session state in memory.
-Anything durable goes to `storage.local` — see `docs/engineering/extension-state.md` (Prompt 024)
-for ownership, TTL, and message allowlists.
+primary surface (`openPanelOnActionClick: false`). The service worker is suspended aggressively, so
+it never holds session state in memory. Anything durable goes to `storage.local` — see
+`docs/engineering/extension-state.md` (Prompt 024) for ownership, TTL, and message allowlists.
+
+### Why file work cannot live in the popup
+
+Chrome destroys a browser-action popup as soon as it loses focus, and an OS file chooser takes
+focus. Picking a file from the popup therefore tore down the document mid-flow: the panel painted
+blank, the in-memory `File` handles were gone, and no error was shown. Chromium has behaved this way
+for years and an extension cannot opt out.
+
+So the popup keeps every step that needs no dialog (account, pricing, Moss ID, status, past
+results, sign out) and hands the rest to a real extension window opened with
+`windows.create({ type: "popup" })` from `src/shared/run-window.ts`. That window survives file
+dialogs, and its id is remembered in `storage.local` so a second click focuses the existing window
+instead of stacking new ones. No extra permission is needed. Both surfaces render the same
+`WorkflowApp` with a `surface` prop (`popup` | `page`).
+
+Every surface is also wrapped in `src/shared/ErrorBoundary.tsx`, so a thrown render shows the
+failure and a Reload button instead of an unexplained blank panel.
 
 ## Permissions
 
@@ -100,9 +117,18 @@ the popup.
    registration, sees the exact `registeruser` / `mail …` body to send themselves to
    `moss@moss.stanford.edu` (never auto-sent), acknowledges, then pastes only the numeric userid.
    Masked display + local vault-style cipher; never sync/logs; purchase IDs are not auth.
-4. **Portal** — unlocked only after Moss User ID is saved. Pair or Batch controls (language, file
-   pickers, advanced options, consent, start run). Remaining runs decrement on start (local demo
-   entitlement). Exhausted plans return to the paywall.
+4. **Portal** — unlocked only after Moss User ID is saved. The popup shows runs left and
+   **Open run window**; the run window shows three numbered steps:
+   1. **Language** — one dropdown of server capabilities. Choosing a language *is* the
+      confirmation, so there is no second confirm button and no search box. A guess from file names
+      is only ever a hint the customer must accept by picking it.
+   2. **Files** — Pair shows two labelled slots (each tile shows the chosen name); Batch shows
+      multi-file and folder pickers. Nothing leaves the device at selection time.
+   3. **Review consents and start** — review line, preflight findings, both consent checkboxes, and
+      a **Start** button directly underneath. The same Start also sits in the header card, so the
+      action is reachable without scrolling either way.
+   Advanced options, past results, and Account stay collapsed below. Remaining runs decrement on
+   start (local demo entitlement). Exhausted plans return to the paywall.
 5. **Run** — see below. Every started run reaches a terminal state.
 
 ## Run lifecycle (why a run can never hang)
@@ -130,5 +156,12 @@ the popup.
   gating, numeric ID validation/masking, portal lock until Moss ID connect, and demo login docs.
 - `tests/prompt-popup-run-completion.test.js` covers the run lifecycle: terminal phases, the deadline,
   recovery after the popup closes, credit release rules, and demo result labelling.
+- `node scripts/e2e/chrome-popup-e2e.mjs` (or `npm run test:e2e:chrome`) drives the real browser:
+  it installs the unpacked build over the DevTools pipe, walks account → pricing → Moss ID → portal,
+  then in the run window picks a language, attaches real files to both pickers, ticks the consents,
+  and asserts the Start button before and after the consents. It fails on any console error,
+  uncaught exception, or emptied root. `--shots <dir>` writes screenshots of each screen.
+  Chrome 137+ removed `--load-extension` from branded builds, which is why the harness uses
+  `--remote-debugging-pipe` with `Extensions.loadUnpacked` and `--enable-unsafe-extension-debugging`.
 - Manual load-unpacked in Chrome 120+ confirms the toolbar opens the popup and survives worker
   suspension.

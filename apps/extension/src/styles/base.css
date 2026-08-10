@@ -57,10 +57,69 @@ p {
 }
 
 .shell--page {
-  max-width: var(--size-workspace-max);
+  width: 100%;
+  max-width: 560px;
   margin: 0 auto;
-  padding: var(--space-2xl) var(--space-xl);
-  gap: var(--space-lg);
+  padding: 0;
+  gap: 0;
+  background:
+    radial-gradient(90% 40% at 0% -6%, color-mix(in srgb, var(--accent) 14%, transparent), transparent 60%),
+    var(--surface);
+}
+
+/* Run window: one readable column, no inner scroll trap, room for the file steps. */
+.page-main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  padding: var(--space-md);
+  padding-top: 4px;
+}
+
+.step-card h2 {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  font-size: 15px;
+}
+
+.step-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+  color: var(--accent-text);
+  font-size: 11px;
+  font-weight: 700;
+  flex: 0 0 auto;
+}
+
+.badge[data-ready="true"] {
+  color: var(--success);
+  border-color: currentColor;
+}
+
+.start-block {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: var(--space-sm);
+}
+
+.start-block .status {
+  text-align: center;
+}
+
+.cta--primary {
+  min-height: 44px;
+  font-size: 14px;
+}
+
+.preflight h3 {
+  margin-bottom: var(--space-hair);
 }
 
 .popup-header,
@@ -251,7 +310,7 @@ p {
   flex: 0 0 auto;
 }
 
-.controls-card .file-pickers {
+.file-pickers {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: var(--space-xs);
@@ -329,11 +388,18 @@ p {
 .plan-card {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 12px;
+  gap: 6px;
+  padding: 10px 12px;
   border: var(--border-hairline) solid var(--border);
   border-radius: var(--radius-control);
   background: var(--surface);
+}
+
+.plan-card__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-xs);
 }
 
 .plan-card h3 {
@@ -341,10 +407,15 @@ p {
   font-size: 14px;
 }
 
+.plan-card .cta {
+  margin-top: 2px;
+}
+
 .plan-price {
   margin: 0;
-  font-size: 18px;
+  font-size: 17px;
   letter-spacing: -0.02em;
+  color: var(--text);
 }
 
 .plan-price span {
@@ -473,17 +544,30 @@ p {
   word-break: break-all;
 }
 
-.consent-row {
-  align-items: flex-start;
-  justify-content: flex-start;
-  margin-top: var(--space-xs);
-}
-
 .row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-sm);
+}
+
+/* Declared after .row so the checkbox and its label stay together. */
+.row.consent-row {
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: var(--space-xs);
+  margin-top: var(--space-xs);
+  cursor: pointer;
+}
+
+.row.consent-row input {
+  margin: 2px 0 0;
+  flex: 0 0 auto;
+}
+
+.row.consent-row span {
+  font-size: 12px;
+  color: var(--text);
 }
 
 .row.wrap {
@@ -619,6 +703,55 @@ ul {
   background: var(--surface);
   color: var(--text);
   cursor: pointer;
+}
+
+/* Big obvious drop targets: the chosen name is the label, so nothing hides behind a dialog. */
+.file-button--drop {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-height: 62px;
+  padding: 10px 12px;
+  border-style: dashed;
+  border-radius: 12px;
+  text-align: left;
+}
+
+.file-button--drop:hover {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+}
+
+.file-button--drop:has(input:disabled) {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.file-button__title {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.file-button__name {
+  font-size: 12px;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.file-button__hint {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.file-button--drop[data-filled="true"] {
+  border-style: solid;
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.file-button--drop[data-filled="true"] .file-button__name {
+  font-weight: 600;
 }
 
 .file-button input[type="file"] {

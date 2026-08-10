@@ -6,6 +6,7 @@ import "@moss/ui/typography.css";
 import "@moss/ui/interaction.css";
 import "../../styles/base.css";
 import { Popup } from "./Popup";
+import { ErrorBoundary } from "../../shared/ErrorBoundary";
 import { applyTheme, loadThemePreference } from "../../shared/theme";
 
 void loadThemePreference().then(applyTheme);
@@ -17,6 +18,8 @@ if (!container) {
 
 createRoot(container).render(
   <StrictMode>
-    <Popup />
+    <ErrorBoundary>
+      <Popup />
+    </ErrorBoundary>
   </StrictMode>,
 );

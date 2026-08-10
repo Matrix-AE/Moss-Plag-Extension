@@ -89,7 +89,9 @@ test("P-POP-T04 progressive disclosure, sticky CTA, focus-friendly popup chrome"
   assert.match(workflow, /aria-expanded=\{advancedOpen\}/);
   assert.match(workflow, /sticky-cta|popup-footer/);
   assert.match(workflow, /info-tip/);
-  assert.match(workflow, /Confirm language/);
+  // Picking a language from capabilities is the confirmation — no second button to press.
+  assert.match(workflow, /selected for this check/);
+  assert.doesNotMatch(workflow, /Confirm language/);
   assert.match(css, /shell--popup/);
   assert.match(css, /status-card/);
   assert.match(css, /180ms/);

@@ -697,13 +697,16 @@ add(129, "folder grouping collapses by top-level directory", () => {
   const groups = grouping.suggestGroups(items, { mode: "batch" });
   assert.ok(groups.filter((g) => g.files?.length).length >= 2);
 });
-add(130, "workflow pair pickers use File 1 / File 2", () => {
+add(130, "workflow pair pickers are two slots that replace in place", () => {
   assert.match(workflow, /File 1/);
   assert.match(workflow, /File 2/);
+  assert.match(workflow, /PAIR_SLOTS/);
+  assert.match(workflow, /onSourceFiles\(fileListFromInput\(event\), slot\.index\)/);
+  assert.match(workflow, /Click to replace/);
 });
-add(131, "workflow batch pickers use Multi-file and Folder", () => {
-  assert.match(workflow, /Multi-file/);
-  assert.match(workflow, /Folder/);
+add(131, "workflow batch pickers offer multiple files and a folder", () => {
+  assert.match(workflow, /Choose multiple files/);
+  assert.match(workflow, /Choose a folder/);
 });
 const LANG_CODES = [
   "c",
@@ -1024,16 +1027,20 @@ add(193, "releaseDemoRun present for failed pre-submit", () => {
   assert.match(entitlementSrc, /releaseDemoRun/);
   assert.match(workflow, /releaseDemoRun/);
 });
-add(194, "Start Pair Check and Start Batch Check CTAs", () => {
+add(194, "Start CTA renders above the steps and again after the consents", () => {
   assert.match(workflow, /Start Pair Check/);
   assert.match(workflow, /Start Batch Check/);
+  assert.match(workflow, /renderStartButton\("header"\)/);
+  assert.match(workflow, /renderStartButton\("footer"\)/);
 });
 add(195, "consent checkboxes ownership and sensitive link", () => {
   assert.match(workflow, /ownership|Ownership/i);
   assert.match(workflow, /sensitiveLink|sensitive/i);
 });
-add(196, "confirm language button still present", () => {
-  assert.match(workflow, /Confirm language/);
+add(196, "choosing a language is the confirmation — no extra confirm step", () => {
+  assert.doesNotMatch(workflow, /Confirm language/);
+  assert.match(workflow, /selected for this check/);
+  assert.match(workflow, /setLanguageConfirmed\(true\)/);
 });
 add(197, "suite registered exactly 200 cases", () => {
   assert.equal(CASES.length, 200);
