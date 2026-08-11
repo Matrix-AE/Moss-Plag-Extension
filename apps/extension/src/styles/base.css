@@ -939,6 +939,133 @@ ul {
   color: var(--text-muted);
 }
 
+/* A more deliberate application shell for the larger run window. */
+.shell--page {
+  max-width: 720px;
+}
+
+.shell--page .popup-header {
+  margin: 16px 20px 0;
+  padding: 18px 0 16px;
+  border-bottom: var(--border-hairline) solid color-mix(in srgb, var(--accent) 26%, var(--border));
+}
+
+.shell--page .page-main {
+  gap: 16px;
+  padding: 16px 20px 20px;
+}
+
+.shell--page .card {
+  padding: 18px;
+  border-radius: 18px;
+}
+
+.brand-copy h1 {
+  font-size: 18px;
+}
+
+.brand-kicker {
+  color: color-mix(in srgb, var(--accent) 62%, var(--text-muted));
+}
+
+.status-card {
+  position: relative;
+  overflow: hidden;
+}
+
+.status-card::after {
+  position: absolute;
+  width: 180px;
+  height: 180px;
+  right: -92px;
+  top: -112px;
+  border-radius: 50%;
+  background: radial-gradient(circle, color-mix(in srgb, var(--accent) 22%, transparent), transparent 68%);
+  content: "";
+  pointer-events: none;
+}
+
+.status-card > * {
+  position: relative;
+  z-index: 1;
+}
+
+.step-card {
+  position: relative;
+}
+
+.step-card::before {
+  position: absolute;
+  left: 0;
+  top: 22px;
+  bottom: 22px;
+  width: 3px;
+  border-radius: var(--radius-pill);
+  background: linear-gradient(var(--accent), color-mix(in srgb, var(--accent) 10%, transparent));
+  content: "";
+}
+
+.step-card .section-head {
+  padding-left: 6px;
+}
+
+.step-card .step-badge {
+  width: 24px;
+  height: 24px;
+  background: color-mix(in srgb, var(--accent) 88%, var(--surface));
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--accent) 24%, transparent);
+}
+
+.cta--primary,
+.start-block .cta {
+  background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 68%, var(--info)));
+  border-color: color-mix(in srgb, var(--accent) 82%, var(--border));
+}
+
+.run-result .section-head {
+  align-items: center;
+  padding-bottom: 10px;
+  border-bottom: var(--border-hairline) solid color-mix(in srgb, var(--border) 76%, transparent);
+}
+
+.run-result h2 {
+  font-size: 17px;
+  letter-spacing: -0.02em;
+}
+
+.run-phases li[data-state="todo"] {
+  background: color-mix(in srgb, var(--surface) 84%, var(--text) 4%);
+}
+
+.file-button--drop {
+  min-height: 84px;
+  padding: 13px 14px;
+}
+
+.file-button--drop:hover {
+  background: color-mix(in srgb, var(--accent) 7%, var(--surface));
+  transform: translateY(-1px);
+}
+
+.preflight {
+  padding: 12px;
+  border: var(--border-hairline) solid color-mix(in srgb, var(--border) 76%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--surface) 78%, var(--surface-muted));
+}
+
+.review-summary {
+  padding: 8px 10px;
+  border-left: 3px solid var(--accent);
+  border-radius: 0 8px 8px 0;
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+}
+
+@media (max-width: 520px) {
+  .shell--page .page-main { padding: 14px; }
+  .shell--page .popup-header { margin: 10px 14px 0; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   * {
     transition: none !important;
