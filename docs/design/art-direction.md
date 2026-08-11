@@ -54,14 +54,14 @@ light is not a degraded afterthought and carries identical semantics.
 | Role | Hex | Use |
 | --- | --- | --- |
 | surface | `#ffffff` | Page and card background |
-| surfaceMuted | `#eef2f7` | Recessed rows, code rails |
-| border | `#cbd5e1` | Hairline separation |
+| surfaceMuted | `#edf3fa` | Recessed rows, code rails |
+| border | `#c7d4e4` | Hairline separation |
 | text | `#0f172a` | Body copy |
 | textMuted | `#526176` | Helper text, timestamps |
-| accent | `#1f5ea8` | One primary action per view |
+| accent | `#1d5dbc` | One primary action per view |
 | accentText | `#ffffff` | Label on accent fill |
-| focus | `#164b88` | Focus ring |
-| info | `#245a8e` | Progress and neutral state |
+| focus | `#174d9c` | Focus ring |
+| info | `#215f9f` | Progress and neutral state |
 | caution | `#81570f` | Needs a decision before continuing |
 | danger | `#a3312c` | Blocked or failed |
 | success | `#1f6a50` | Workflow finished |

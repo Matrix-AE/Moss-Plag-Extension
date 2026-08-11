@@ -8,6 +8,45 @@ body {
   margin: 0;
 }
 
+/* Light mode has a cool, layered canvas so it feels intentional rather than plain white. */
+:root:not([data-theme="dark"]) body {
+  background:
+    radial-gradient(90% 58% at 0% -12%, color-mix(in srgb, var(--accent) 16%, var(--surface)), transparent 70%),
+    radial-gradient(68% 42% at 100% 0%, color-mix(in srgb, var(--info) 9%, var(--surface)), transparent 68%),
+    var(--surface-muted);
+}
+
+:root:not([data-theme="dark"]) .shell--popup,
+:root:not([data-theme="dark"]) .shell--page {
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--surface-elevated) 92%, transparent);
+}
+
+:root:not([data-theme="dark"]) .shell--popup {
+  background:
+    radial-gradient(120% 66% at -8% -18%, color-mix(in srgb, var(--accent) 20%, var(--surface)), transparent 59%),
+    radial-gradient(84% 48% at 106% 2%, color-mix(in srgb, var(--info) 12%, var(--surface)), transparent 62%),
+    var(--surface);
+}
+
+:root:not([data-theme="dark"]) .shell--page {
+  background:
+    radial-gradient(88% 46% at 0% -10%, color-mix(in srgb, var(--accent) 13%, var(--surface)), transparent 63%),
+    var(--surface);
+}
+
+:root:not([data-theme="dark"]) .card {
+  border-color: color-mix(in srgb, var(--border) 82%, var(--accent));
+  background:
+    linear-gradient(145deg, var(--surface-elevated), color-mix(in srgb, var(--surface-muted) 82%, var(--accent)));
+  box-shadow:
+    0 1px 0 color-mix(in srgb, var(--surface-elevated) 94%, transparent),
+    0 14px 30px color-mix(in srgb, var(--accent) 9%, transparent);
+}
+
+:root:not([data-theme="dark"]) .popup-header {
+  border-bottom-color: color-mix(in srgb, var(--accent) 18%, var(--border));
+}
+
 body {
   background:
     radial-gradient(78% 46% at 12% -8%, color-mix(in srgb, var(--accent) 14%, transparent), transparent 64%),

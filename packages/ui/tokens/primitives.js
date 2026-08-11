@@ -13,13 +13,13 @@ const TOKEN_VERSION = 1;
 const COLOR = Object.freeze({
   light: Object.freeze({
     white: "#ffffff",
-    gray50: "#eef2f7",
-    gray200: "#cbd5e1",
+    gray50: "#edf3fa",
+    gray200: "#c7d4e4",
     gray700: "#526176",
     gray950: "#0f172a",
-    blue600: "#1f5ea8",
-    blue700: "#164b88",
-    blue800: "#245a8e",
+    blue600: "#1d5dbc",
+    blue700: "#174d9c",
+    blue800: "#215f9f",
     amber800: "#81570f",
     red700: "#a3312c",
     green800: "#1f6a50",
