@@ -494,7 +494,8 @@ export function WorkflowApp({ surface = "popup" }: { surface?: Surface } = {}) {
   const pollLiveRun = useCallback(async () => {
     if (pollInFlightRef.current) return;
     const current = run;
-    if (!current || current.mode !== "live" || !current.jobId || !account?.email) return;
+    const ownerUserId = account?.userId || account?.email;
+    if (!current || current.mode !== "live" || !current.jobId || !ownerUserId) return;
     if (runLifecycle.isTerminalPhase(current.phase)) return;
 
     const now = Date.now();
@@ -519,7 +520,7 @@ export function WorkflowApp({ surface = "popup" }: { surface?: Surface } = {}) {
     pollInFlightRef.current = true;
     try {
       const status = await apiClient.getJobStatus({
-        ownerUserId: account.email,
+        ownerUserId,
         jobId: current.jobId,
       });
       if (!status.ok) {
@@ -566,7 +567,7 @@ export function WorkflowApp({ surface = "popup" }: { surface?: Surface } = {}) {
 
       if (nextPhase === "success" && job?.reportUrlRef) {
         const revealed = await apiClient.revealJobResult({
-          ownerUserId: account.email,
+          ownerUserId,
           jobId: current.jobId,
         });
         if (revealed.ok && typeof revealed.data["reportUrl"] === "string") {
@@ -576,7 +577,7 @@ export function WorkflowApp({ surface = "popup" }: { surface?: Surface } = {}) {
     } finally {
       pollInFlightRef.current = false;
     }
-  }, [run, account?.email]);
+  }, [run, account?.userId, account?.email]);
 
   // Drive the run forward: demo ticks locally; live polls the loopback API. Deadline always wins.
   useEffect(() => {
@@ -1448,8 +1449,9 @@ export function WorkflowApp({ surface = "popup" }: { surface?: Surface } = {}) {
     setLinkNote(
       "Link forgotten in this popup. This does not revoke browser history, clipboard copies, or the provider report.",
     );
-    if (run?.mode === "live" && run.jobId && account?.email) {
-      void apiClient.forgetJobResult({ ownerUserId: account.email, jobId: run.jobId });
+    const ownerUserId = account?.userId || account?.email;
+    if (run?.mode === "live" && run.jobId && ownerUserId) {
+      void apiClient.forgetJobResult({ ownerUserId, jobId: run.jobId });
     }
   };
 
