@@ -441,7 +441,7 @@ export function WorkflowApp({ surface = "popup" }: { surface?: Surface } = {}) {
         now: Date.now(),
         mode: isLiveJob ? "live" : "demo",
       };
-      if (isLiveJob) recoverOpts.deadlineMs = 180_000;
+      if (isLiveJob) recoverOpts.deadlineMs = 600_000;
       const recovered = runLifecycle.recoverRunState(next.activeJob, recoverOpts);
       if (recovered.ok && recovered.state) {
         setRun(recovered.state);
@@ -532,10 +532,24 @@ export function WorkflowApp({ surface = "popup" }: { surface?: Surface } = {}) {
             reportUrlRef?: string;
             failureCode?: string;
             submitted?: boolean;
+            providerStage?: string;
           }
         | undefined;
       const nextPhase = apiClient.phaseFromJobStatus(job?.status);
       if (!nextPhase) return;
+
+      if (job?.providerStage) {
+        const stageLabels: Record<string, string> = {
+          connecting: "Connecting to MOSS…",
+          authenticated: "MOSS connection authenticated…",
+          "language-accepted": "MOSS accepted the selected language…",
+          "query-sent": "MOSS accepted the query…",
+          "awaiting-report": "MOSS is generating the report…",
+          "report-received": "MOSS report received…",
+        };
+        const stage = String(job.providerStage);
+        setGateMessage(stageLabels[stage] || (stage.startsWith("uploaded-") ? "Files uploaded; submitting to MOSS…" : `MOSS status: ${stage}`));
+      }
 
       setRun((prev) => {
         if (!prev || prev.mode !== "live" || prev.jobId !== current.jobId) return prev;
@@ -1239,7 +1253,7 @@ export function WorkflowApp({ surface = "popup" }: { surface?: Surface } = {}) {
         language: languageCode,
         comparison: comparisonMode,
         mode: "live",
-        deadlineMs: 180_000,
+        deadlineMs: 600_000,
       }),
     );
     setReportUrl("");

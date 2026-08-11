@@ -67,8 +67,11 @@ async function submitPairToMoss(job, options = {}) {
     env = process.env,
     production = false,
     connectTimeoutMs = 15_000,
-    readTimeoutMs = 120_000,
-    overallTimeoutMs = 180_000,
+    // MOSS can take several minutes after accepting a query. Keep these bounded,
+    // but long enough to distinguish a slow report from a dead socket.
+    readTimeoutMs = 300_000,
+    overallTimeoutMs = 600_000,
+    onStage = () => {},
     mockServerFactory = createMockMossServer,
   } = options;
 
@@ -99,6 +102,7 @@ async function submitPairToMoss(job, options = {}) {
   let transportMode = "mock-loopback";
 
   try {
+    onStage("connecting");
     if (mode === "public-raw-tcp") {
       assertPublicMossAllowed({ env, production });
       host = PUBLIC_HOST;
@@ -127,6 +131,7 @@ async function submitPairToMoss(job, options = {}) {
     const { writeLine, writeBytes, readLine, cleanup } = session;
     try {
       await writeLine(`moss ${job.mossUserId}`);
+      onStage("authenticated");
       const directoryMode =
         job.directoryMode === 1 ||
         files.some((file, _i, arr) => {
@@ -149,6 +154,7 @@ async function submitPairToMoss(job, options = {}) {
       if (!/^yes$/i.test(String(langAck.line || "").trim())) {
         return classify("authenticated", "language", langAck.line || "language rejected");
       }
+      onStage("language-accepted");
 
       for (let i = 0; i < files.length; i += 1) {
         const file = files[i];
@@ -162,10 +168,13 @@ async function submitPairToMoss(job, options = {}) {
             : i + 1;
         await writeLine(`file ${submissionId} ${job.language} ${body.length} ${name}`);
         await writeBytes(body);
+        onStage(`uploaded-${i + 1}-of-${files.length}`);
       }
 
       const comment = sanitizeComment(job.comment || (job.mode === "batch" ? "batch-check" : "pair-check"));
       await writeLine(`query 0 ${comment}`);
+      onStage("query-sent");
+      onStage("awaiting-report");
       const result = await readLine();
       if (!result.ok) {
         return classify("query-sent", result.error || "timeout", result.error || "");
@@ -175,6 +184,7 @@ async function submitPairToMoss(job, options = {}) {
         return classify("awaiting-url", "invalid-url", url);
       }
       await writeLine("end").catch(() => {});
+      onStage("report-received");
       return {
         ok: true,
         reportUrl: url,
