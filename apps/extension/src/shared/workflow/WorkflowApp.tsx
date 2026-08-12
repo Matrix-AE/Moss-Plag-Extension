@@ -1531,9 +1531,13 @@ export function WorkflowApp({ surface = "popup" }: { surface?: Surface } = {}) {
     );
   };
 
+  const filledGroupCount = groups.filter((group) => Array.isArray(group.files) && group.files.length > 0).length;
   const filesReady =
-    comparisonMode === "pair" ? sourceItems.length === maxFilesPerRun : sourceItems.length >= 2;
+    comparisonMode === "pair"
+      ? sourceItems.length === maxFilesPerRun && filledGroupCount === 2
+      : sourceItems.length >= 2 && filledGroupCount >= 2;
   const consentsReady = ownership && sensitiveLink;
+  const blockingPreflight = preflightResult.errors.find((error) => error.blocking);
   const warningsReady = preflightResult.warnings.length === 0 || warningsAck;
   const startBlocker = !mossConnected
     ? "Connect your Moss User ID first."
@@ -1542,9 +1546,13 @@ export function WorkflowApp({ surface = "popup" }: { surface?: Surface } = {}) {
       : !filesReady
         ? comparisonMode === "pair"
           ? `Choose ${maxFilesPerRun} files (${sourceItems.length} chosen).`
-          : `Choose at least 2 files (${sourceItems.length} chosen).`
+          : filledGroupCount < 2
+            ? `Batch needs at least 2 submissions (${filledGroupCount} ready).`
+            : `Choose at least 2 files (${sourceItems.length} chosen).`
         : !languageConfirmed
           ? "Choose the language of these files."
+          : blockingPreflight
+            ? `Resolve preflight block: ${blockingPreflight.message}`
           : !consentsReady
             ? "Tick both confirmations below."
             : !warningsReady
