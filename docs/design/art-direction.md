@@ -58,10 +58,10 @@ light is not a degraded afterthought and carries identical semantics.
 | border | `#c7d4e4` | Hairline separation |
 | text | `#0f172a` | Body copy |
 | textMuted | `#526176` | Helper text, timestamps |
-| accent | `#1d5dbc` | One primary action per view |
+| accent | `#6654dc` | One primary action per view |
 | accentText | `#ffffff` | Label on accent fill |
-| focus | `#174d9c` | Focus ring |
-| info | `#215f9f` | Progress and neutral state |
+| focus | `#5141bb` | Focus ring |
+| info | `#5b4cc4` | Progress and neutral state |
 | caution | `#81570f` | Needs a decision before continuing |
 | danger | `#a3312c` | Blocked or failed |
 | success | `#1f6a50` | Workflow finished |
@@ -75,10 +75,10 @@ light is not a degraded afterthought and carries identical semantics.
 | border | `#25324a` | Hairline separation |
 | text | `#f5f7fb` | Body copy |
 | textMuted | `#a7b2c3` | Helper text, timestamps |
-| accent | `#7eb0ff` | One primary action per view |
+| accent | `#b7adff` | One primary action per view |
 | accentText | `#07111f` | Label on accent fill |
-| focus | `#adcaff` | Focus ring |
-| info | `#9cc9ff` | Progress and neutral state |
+| focus | `#d1caff` | Focus ring |
+| info | `#c2baff` | Progress and neutral state |
 | caution | `#e8b86d` | Needs a decision before continuing |
 | danger | `#f0a29c` | Blocked or failed |
 | success | `#8bd8b1` | Workflow finished |

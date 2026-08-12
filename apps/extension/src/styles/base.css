@@ -639,6 +639,10 @@ button:not(:disabled):hover {
   transform: translateY(-1px);
 }
 
+button:not(:disabled):not(.secondary):not(.link-button):not(.settings-chip):not(.disclosure):not(.info-tip__button):hover {
+  background: color-mix(in srgb, var(--accent) 86%, var(--text));
+}
+
 button:not(.secondary):not(.link-button):not(.settings-chip):not(.disclosure):not(.info-tip__button) {
   box-shadow: 0 7px 16px color-mix(in srgb, var(--accent) 23%, transparent);
 }
@@ -652,6 +656,13 @@ button.secondary {
   background: transparent;
   border-color: var(--border);
   color: var(--text);
+}
+
+button.secondary:not(:disabled):hover,
+.settings-chip:not(:disabled):hover,
+.file-button:not(:disabled):hover {
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+  border-color: color-mix(in srgb, var(--accent) 52%, var(--border));
 }
 
 button:disabled {
