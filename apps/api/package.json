@@ -34,12 +34,13 @@
     "./commerce/entitlements": "./commerce/entitlements.js",
     "./commerce/checkout": "./commerce/checkout.js",
     "./live/pair-service": "./live/pair-service.js",
-    "./server": "./server.js"
+    "./server": "./server.js",
+    "./admin/dashboard": "./admin/dashboard.js"
   },
   "scripts": {
-    "start": "node server.js",
-    "start:live": "node start-live.js",
-    "start:mock": "node server.js"
+    "start": "node --env-file=.env.local server.js",
+    "start:live": "node --env-file=.env.local start-live.js",
+    "start:mock": "node --env-file=.env.local server.js"
   },
   "dependencies": {
     "@moss/domain": "0.0.0",
