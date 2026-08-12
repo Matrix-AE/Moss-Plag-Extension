@@ -6,7 +6,7 @@ const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
 
-const { createPasswordAuthService } = require("../apps/api/auth/password-auth");
+const { createPasswordAuthService, REFRESH_TTL_MS } = require("../apps/api/auth/password-auth");
 const { createServer } = require("../apps/api/server");
 
 test("email/password register → otp verify → authorize", async () => {
@@ -46,6 +46,59 @@ test("email/password register → otp verify → authorize", async () => {
   const dup = await auth.register({ email: "tahir.nazir@ndeexperts.com", password: "Secret123!" });
   assert.equal(dup.ok, false);
   assert.equal(dup.error, "email-taken");
+
+  fs.unlinkSync(storePath);
+});
+
+test("verified laptop can sign in without OTP for 30 days", async () => {
+  let t = Date.now();
+  const storePath = path.join(os.tmpdir(), `moss-auth-remember-${process.pid}-${t}.json`);
+  const sent = [];
+  const auth = createPasswordAuthService({
+    now: () => t,
+    production: false,
+    storePath,
+    sendOtp: async ({ to, code }) => {
+      sent.push({ to, code });
+      return { ok: true, id: "test" };
+    },
+  });
+
+  const reg = await auth.register({ email: "remember@example.com", password: "Secret123!" });
+  const first = auth.verifyOtp({
+    nonce: reg.nonce,
+    code: sent.at(-1).code,
+    deviceId: "dev-trusted-1",
+  });
+  assert.equal(first.ok, true);
+
+  const remembered = await auth.login({
+    email: "remember@example.com",
+    password: "Secret123!",
+    deviceId: "dev-trusted-1",
+  });
+  assert.equal(remembered.ok, true);
+  assert.ok(remembered.accessToken);
+  assert.equal(sent.length, 1);
+
+  const otherDevice = await auth.login({
+    email: "remember@example.com",
+    password: "Secret123!",
+    deviceId: "dev-new-2",
+  });
+  assert.equal(otherDevice.ok, true);
+  assert.ok(otherDevice.nonce);
+  assert.equal(sent.length, 2);
+
+  t += REFRESH_TTL_MS + 1;
+  const expired = await auth.login({
+    email: "remember@example.com",
+    password: "Secret123!",
+    deviceId: "dev-trusted-1",
+  });
+  assert.equal(expired.ok, true);
+  assert.ok(expired.nonce);
+  assert.equal(sent.length, 3);
 
   fs.unlinkSync(storePath);
 });

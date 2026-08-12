@@ -71,12 +71,16 @@ function createPasswordAuthService({
     return startOtp({ email: normalized, purpose: "register" });
   }
 
-  function login({ email, password }) {
+  function login({ email, password, deviceId }) {
     const normalized = normalizeEmail(email);
     const user = findUser(normalized);
     if (!user) return { ok: false, error: "invalid-credentials", status: 401 };
     if (!verifyPassword(password, user.passwordHash)) {
       return { ok: false, error: "invalid-credentials", status: 401 };
+    }
+    const remembered = getRememberedDevice({ userId: user.userId, deviceId });
+    if (user.emailVerified && remembered.ok) {
+      return issueSession({ user, deviceId: remembered.deviceId });
     }
     return startOtp({
       email: normalized,
@@ -198,8 +202,9 @@ function createPasswordAuthService({
       user.emailVerified = true;
       user.verifiedAt = now();
       user.updatedAt = now();
-      persist();
     }
+    rememberDevice({ user, deviceId });
+    persist();
 
     return issueSession({ user, deviceId });
   }
@@ -276,6 +281,35 @@ function createPasswordAuthService({
       email: user.email,
       emailVerified: true,
     };
+  }
+
+  function rememberDevice({ user, deviceId }) {
+    const id = String(deviceId || "").trim();
+    if (!id || id.length < 8) return;
+    state.rememberedDevices[id] = {
+      userId: user.userId,
+      email: user.email,
+      rememberedAt: now(),
+      expiresAt: now() + REFRESH_TTL_MS,
+    };
+  }
+
+  function getRememberedDevice({ userId, deviceId }) {
+    const id = String(deviceId || "").trim();
+    if (!id || id.length < 8) return { ok: false, error: "device-required" };
+    const remembered = state.rememberedDevices[id];
+    if (!remembered || remembered.userId !== userId) {
+      return { ok: false, error: "not-remembered" };
+    }
+    if (remembered.expiresAt < now()) {
+      delete state.rememberedDevices[id];
+      persist();
+      return { ok: false, error: "remembered-expired" };
+    }
+    remembered.rememberedAt = now();
+    remembered.expiresAt = now() + REFRESH_TTL_MS;
+    persist();
+    return { ok: true, deviceId: id };
   }
 
   function refresh({ refreshToken, deviceId }) {
@@ -441,7 +475,9 @@ function validatePassword(password) {
 
 function loadStore(storePath) {
   try {
-    if (!fs.existsSync(storePath)) return { version: 1, users: [], deviceTrials: {} };
+    if (!fs.existsSync(storePath)) {
+      return { version: 1, users: [], deviceTrials: {}, rememberedDevices: {} };
+    }
     const raw = JSON.parse(fs.readFileSync(storePath, "utf8"));
     return {
       version: 1,
@@ -450,9 +486,15 @@ function loadStore(storePath) {
         raw.deviceTrials && typeof raw.deviceTrials === "object" && !Array.isArray(raw.deviceTrials)
           ? raw.deviceTrials
           : {},
+      rememberedDevices:
+        raw.rememberedDevices &&
+        typeof raw.rememberedDevices === "object" &&
+        !Array.isArray(raw.rememberedDevices)
+          ? raw.rememberedDevices
+          : {},
     };
   } catch {
-    return { version: 1, users: [], deviceTrials: {} };
+    return { version: 1, users: [], deviceTrials: {}, rememberedDevices: {} };
   }
 }
 
@@ -467,6 +509,7 @@ function saveStore(storePath, state) {
         version: 1,
         users: state.users,
         deviceTrials: state.deviceTrials || {},
+        rememberedDevices: state.rememberedDevices || {},
       },
       null,
       2,

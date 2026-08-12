@@ -60,6 +60,7 @@ function createAuthRouter(auth, oauth = null) {
         const result = await auth.login({
           email: body.email,
           password: body.password,
+          deviceId: body.deviceId,
         });
         writeJson(res, result.ok ? 200 : result.status || 400, result);
         return true;

@@ -737,6 +737,29 @@ export function WorkflowApp({ surface = "popup" }: { surface?: Surface } = {}) {
       setAuthError(started.error);
       return;
     }
+    if ("session" in started) {
+      const nextAccount = sessionToAccount(started.session);
+      setAccount(nextAccount);
+      setPassword("");
+      setConfirmPassword("");
+      setMossRegEmail(started.session.email);
+      const synced = await syncLocalStateForAccount({
+        userId: started.session.userId,
+        email: started.session.email,
+      });
+      const trialStatus = await loadDeviceTrialStatus();
+      setDeviceTrial(trialStatus);
+      setEntitlement(synced.entitlement);
+      setMossCredential(synced.moss);
+      if (synced.moss?.display) setProviderIdMasked(synced.moss.display);
+      resolveGate(nextAccount, synced.entitlement, synced.moss);
+      setGateMessage(
+        synced.entitlement && isEntitled(synced.entitlement)
+          ? "Welcome back. Continue where you left off."
+          : `Choose a plan to continue - Free demo (1 check on this PC), Pair ($${PLANS.pair.priceUsd}), or Batch ($${PLANS.batch.priceUsd}).`,
+      );
+      return;
+    }
     setOtpNonce(started.nonce);
     setOtpPendingEmail(started.email);
     setAuthStep("otp");

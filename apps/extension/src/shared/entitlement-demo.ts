@@ -257,7 +257,7 @@ export async function saveDemoAccount(
 }
 
 export async function clearDemoAccount(): Promise<void> {
-  await browser.storage.local.remove([ACCOUNT_KEY, ENTITLEMENT_KEY, MOSS_CRED_KEY, RELEASED_RUNS_KEY]);
+  await browser.storage.local.remove(ACCOUNT_KEY);
 }
 
 /**
@@ -324,6 +324,15 @@ export async function purchaseDemoEntitlement(
   const resolved = await resolveOwner(owner);
   if (!resolved.ok) throw new Error(resolved.error);
   const plan = PLANS[planId] || PLANS.pair;
+  const current = await loadDemoEntitlement();
+  if (
+    current &&
+    current.ownerUserId === resolved.userId &&
+    current.planId === plan.id &&
+    current.total === plan.runs
+  ) {
+    return current;
+  }
   const entitlement: DemoEntitlement = {
     remaining: plan.runs,
     total: plan.runs,
