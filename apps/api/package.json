@@ -38,7 +38,7 @@
     "./admin/dashboard": "./admin/dashboard.js"
   },
   "scripts": {
-    "start": "node server.js",
+    "start": "node --env-file=.env.local server.js",
     "start:live": "node start-live.js",
     "start:mock": "node server.js"
   },
