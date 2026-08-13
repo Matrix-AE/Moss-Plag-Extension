@@ -19,16 +19,15 @@
  * - GET  /v1/auth/me
  * - POST /v1/admin/login
  * - GET  /v1/admin/dashboard
+ * - POST /v1/checkout/session
+ * - POST /v1/checkout/mock-complete
  * - POST /v1/webhooks/entitlements
  * - POST /v1/jobs
  * - ...
  */
 
-const http =
-  require("node:http");
-
-const { URL } =
-  require("node:url");
+const http = require("node:http");
+const { URL } = require("node:url");
 
 const {
   createPairService,
@@ -60,31 +59,31 @@ const {
 );
 
 const {
+  createCheckoutService,
+} = require(
+  "./commerce/checkout",
+);
+
+const {
   createAdminDashboardService,
 } = require("./admin/dashboard");
 
-const DEFAULT_PORT =
-  8787;
-
-const DEFAULT_HOST =
-  "127.0.0.1";
+const DEFAULT_PORT = 8787;
+const DEFAULT_HOST = "127.0.0.1";
 
 function resolveSubmitMode(
   env = process.env,
 ) {
   const wantPublic =
-    env.ALLOW_PUBLIC_MOSS_TCP ===
-    "1";
+    env.ALLOW_PUBLIC_MOSS_TCP === "1";
 
   if (!wantPublic) {
     return "mock-loopback";
   }
 
   if (
-    env.NODE_ENV ===
-      "production" &&
-    env.ALLOW_HOSTED_PUBLIC_MOSS_TCP !==
-      "1"
+    env.NODE_ENV === "production" &&
+    env.ALLOW_HOSTED_PUBLIC_MOSS_TCP !== "1"
   ) {
     return "mock-loopback";
   }
@@ -113,16 +112,13 @@ function resolveListenHost(
 function resolveListenPort(
   env = process.env,
 ) {
-  const port =
-    Number(
-      env.PORT ||
-        env.MOSS_API_PORT ||
-        DEFAULT_PORT,
-    );
+  const port = Number(
+    env.PORT ||
+      env.MOSS_API_PORT ||
+      DEFAULT_PORT,
+  );
 
-  return Number.isFinite(
-    port,
-  ) && port > 0
+  return Number.isFinite(port) && port > 0
     ? port
     : DEFAULT_PORT;
 }
@@ -131,40 +127,30 @@ function createServer(
   options = {},
 ) {
   const env =
-    options.env ||
-    process.env;
+    options.env || process.env;
 
   const host =
     options.host ||
-    resolveListenHost(
-      env,
-    );
+    resolveListenHost(env);
 
-  const port =
-    Number(
-      options.port ||
-        resolveListenPort(
-          env,
-        ),
-    );
+  const port = Number(
+    options.port ||
+      resolveListenPort(env),
+  );
 
   const submitMode =
     options.submitMode ||
-    resolveSubmitMode(
-      env,
-    );
+    resolveSubmitMode(env);
 
   const corsOrigins =
     new Set(
-      options.corsOrigins ||
-        [
-          `http://${host}:${port}`,
-          "http://127.0.0.1:8787",
-          "http://127.0.0.1:5174",
-          "http://localhost:5174",
-          env.ADMIN_WEB_ORIGIN,
-          "chrome-extension://",
-        ].filter(Boolean),
+      options.corsOrigins || [
+        `http://${host}:${port}`,
+        "http://127.0.0.1:8787",
+        "http://127.0.0.1:5174",
+        "http://localhost:5174",
+        env.ADMIN_WEB_ORIGIN,
+      ].filter(Boolean),
     );
 
   const service =
@@ -174,30 +160,23 @@ function createServer(
         submitPairToMoss(
           job,
           {
-            mode:
-              submitMode,
-
+            mode: submitMode,
             env,
-
             production:
-              env.NODE_ENV ===
-              "production",
+              env.NODE_ENV === "production",
           },
         ),
     });
 
   const auth =
     options.auth ||
-    createPasswordAuthService(
-      {
-        production:
-          env.NODE_ENV ===
-          "production",
+    createPasswordAuthService({
+      production:
+        env.NODE_ENV === "production",
 
-        storePath:
-          env.AUTH_STORE_PATH,
-      },
-    );
+      storePath:
+        env.AUTH_STORE_PATH,
+    });
 
   const oauth =
     options.oauth ||
@@ -215,8 +194,7 @@ function createServer(
   const entitlementSecret =
     env.ENTITLEMENT_WEBHOOK_SECRET ||
     (
-      env.NODE_ENV ===
-      "production"
+      env.NODE_ENV === "production"
         ? ""
         : "development-only-entitlement-secret-rotate-me"
     );
@@ -231,22 +209,49 @@ function createServer(
         env.ENTITLEMENT_STORE_PATH,
     });
 
+  /*
+   * Checkout return origins are configured server-side.
+   *
+   * Example:
+   * CHECKOUT_RETURN_ORIGINS=https://your-site.example,chrome-extension://...
+   *
+   * Keep this empty until the actual hosted return origin
+   * is known. The checkout service will reject unknown origins
+   * when an allowlist is configured.
+   */
+  const checkoutReturnOrigins =
+    String(
+      env.CHECKOUT_RETURN_ORIGINS || "",
+    )
+      .split(",")
+      .map((value) => value.trim())
+      .filter(Boolean);
+
+  const checkout =
+    options.checkout ||
+    createCheckoutService({
+      webhookSecret:
+        entitlementSecret,
+
+      entitlementService:
+        entitlements,
+
+      returnOrigins:
+        checkoutReturnOrigins,
+    });
+
   const adminDashboard =
     options.adminDashboard ||
     createAdminDashboardService({
       auth,
       entitlements,
       adminEmails:
-        env.ADMIN_EMAILS ||
-        "",
+        env.ADMIN_EMAILS || "",
     });
 
   const server =
     http.createServer(
-      async (
-        req,
-        res,
-      ) => {
+      async (req, res) => {
         try {
           await handleRequest(
             req,
@@ -259,17 +264,22 @@ function createServer(
               oauth,
               authRouter,
               entitlements,
+              checkout,
               adminDashboard,
             },
           );
-        } catch {
+        } catch (error) {
+          console.error(
+            "[moss-pair-api] request failed",
+            error,
+          );
+
           writeJson(
             res,
             500,
             {
               ok: false,
-              error:
-                "internal",
+              error: "internal",
               message:
                 "Request failed.",
             },
@@ -284,13 +294,10 @@ function createServer(
     submitMode,
 
     service,
-
     auth,
-
     oauth,
-
     entitlements,
-
+    checkout,
     adminDashboard,
 
     listen() {
@@ -337,8 +344,7 @@ function createServer(
             };
 
           if (
-            host ===
-              "0.0.0.0" ||
+            host === "0.0.0.0" ||
             host === "::"
           ) {
             server.listen(
@@ -381,26 +387,23 @@ async function handleRequest(
   );
 
   if (
-    req.method ===
-    "OPTIONS"
+    req.method === "OPTIONS"
   ) {
     res.writeHead(204);
     res.end();
     return;
   }
 
-  const url =
-    new URL(
-      req.url || "/",
-      `http://${req.headers.host || "127.0.0.1"}`,
-    );
+  const url = new URL(
+    req.url || "/",
+    `http://${req.headers.host || "127.0.0.1"}`,
+  );
 
   const path =
     url.pathname;
 
   if (
-    req.method ===
-      "GET" &&
+    req.method === "GET" &&
     path === "/health"
   ) {
     writeJson(
@@ -423,6 +426,9 @@ async function handleRequest(
     return;
   }
 
+  /*
+   * Auth routes.
+   */
   if (ctx.authRouter) {
     const handled =
       await ctx.authRouter.handle(
@@ -443,75 +449,443 @@ async function handleRequest(
     }
   }
 
+  /*
+   * Admin login.
+   */
   if (
-    req.method ===
-      "POST" &&
-    path ===
-      "/v1/admin/login"
+    req.method === "POST" &&
+    path === "/v1/admin/login"
   ) {
     const body =
-      await readJson(
-        req,
-      );
+      await readJson(req);
 
     const result =
       ctx.auth.adminLogin({
         email:
           body.email,
-
         password:
           body.password,
-
         deviceId:
           body.deviceId,
-
         adminEmails:
           process.env
-            .ADMIN_EMAILS ||
-          "",
+            .ADMIN_EMAILS || "",
       });
 
     writeJson(
       res,
       result.ok
         ? 200
-        : result.status ||
-            401,
+        : result.status || 401,
       result,
     );
 
     return;
   }
 
+  /*
+   * Admin dashboard.
+   */
   if (
-    req.method ===
-      "GET" &&
+    req.method === "GET" &&
     path ===
       "/v1/admin/dashboard"
   ) {
     const result =
-      ctx.adminDashboard.snapshot(
-        {
-          accessToken:
-            bearer(req),
-        },
-      );
+      ctx.adminDashboard.snapshot({
+        accessToken:
+          bearer(req),
+      });
 
     writeJson(
       res,
       result.ok
         ? 200
-        : result.status ||
-            401,
+        : result.status || 401,
       result,
     );
 
     return;
   }
 
+  /*
+   * Create a checkout session.
+   */
   if (
-    req.method ===
-      "POST" &&
+    req.method === "POST" &&
+    path ===
+      "/v1/checkout/session"
+  ) {
+    const accessToken =
+      bearer(req);
+
+    if (!accessToken) {
+      writeJson(
+        res,
+        401,
+        {
+          ok: false,
+          error: "unauthorized",
+        },
+      );
+
+      return;
+    }
+
+    const authed =
+      ctx.auth.authorize({
+        accessToken,
+      });
+
+    if (!authed.ok) {
+      writeJson(
+        res,
+        401,
+        authed,
+      );
+
+      return;
+    }
+
+    const body =
+      await readJson(req);
+
+    const planId =
+      String(
+        body.planId || "",
+      )
+        .trim()
+        .toLowerCase();
+
+    const returnOrigin =
+      String(
+        body.returnOrigin || "",
+      ).trim();
+
+    const reviewDraftId =
+      String(
+        body.reviewDraftId || "",
+      ).trim();
+
+    if (!planId) {
+      writeJson(
+        res,
+        400,
+        {
+          ok: false,
+          error: "plan-required",
+        },
+      );
+
+      return;
+    }
+
+    if (!returnOrigin) {
+      writeJson(
+        res,
+        400,
+        {
+          ok: false,
+          error:
+            "return-origin-required",
+        },
+      );
+
+      return;
+    }
+
+    if (!reviewDraftId) {
+      writeJson(
+        res,
+        400,
+        {
+          ok: false,
+          error:
+            "review-draft-required",
+        },
+      );
+
+      return;
+    }
+
+    const result =
+      ctx.checkout.createSession({
+        userId:
+          authed.userId,
+
+        planId,
+
+        returnOrigin,
+
+        reviewDraftId,
+      });
+
+    writeJson(
+      res,
+      result.ok
+        ? 200
+        : result.status || 400,
+      result,
+    );
+
+    return;
+  }
+
+  /*
+   * Development-only mock checkout completion.
+   *
+   * This lets us test the complete:
+   *
+   * Pair / Batch
+   *   -> checkout session
+   *   -> purchase completion
+   *   -> Supabase subscription
+   *   -> Supabase entitlement
+   *
+   * In production this route is disabled unless
+   * ALLOW_MOCK_CHECKOUT=1 is explicitly set.
+   *
+   * Do NOT keep ALLOW_MOCK_CHECKOUT=1 in Railway after
+   * the real payment gateway is integrated.
+   */
+  if (
+    req.method === "POST" &&
+    path ===
+      "/v1/checkout/mock-complete"
+  ) {
+    if (
+      process.env.NODE_ENV ===
+        "production" &&
+      process.env.ALLOW_MOCK_CHECKOUT !==
+        "1"
+    ) {
+      writeJson(
+        res,
+        404,
+        {
+          ok: false,
+          error: "not-found",
+        },
+      );
+
+      return;
+    }
+
+    const accessToken =
+      bearer(req);
+
+    if (!accessToken) {
+      writeJson(
+        res,
+        401,
+        {
+          ok: false,
+          error: "unauthorized",
+        },
+      );
+
+      return;
+    }
+
+    const authed =
+      ctx.auth.authorize({
+        accessToken,
+      });
+
+    if (!authed.ok) {
+      writeJson(
+        res,
+        401,
+        authed,
+      );
+
+      return;
+    }
+
+    const body =
+      await readJson(req);
+
+    const sessionId =
+      String(
+        body.sessionId || "",
+      ).trim();
+
+    const requestedPlanId =
+      String(
+        body.planId || "",
+      )
+        .trim()
+        .toLowerCase();
+
+    if (!sessionId) {
+      writeJson(
+        res,
+        400,
+        {
+          ok: false,
+          error:
+            "session-required",
+        },
+      );
+
+      return;
+    }
+
+    const session =
+      ctx.checkout.getSession({
+        sessionId,
+      });
+
+    if (!session.ok) {
+      writeJson(
+        res,
+        404,
+        session,
+      );
+
+      return;
+    }
+
+    /*
+     * Prevent user A from completing user B's checkout.
+     */
+    if (
+      session.session.userId !==
+      authed.userId
+    ) {
+      writeJson(
+        res,
+        403,
+        {
+          ok: false,
+          error:
+            "checkout-owner-mismatch",
+        },
+      );
+
+      return;
+    }
+
+    /*
+     * The server-created session is authoritative.
+     */
+    if (
+      requestedPlanId &&
+      requestedPlanId !==
+        session.session.planId
+    ) {
+      writeJson(
+        res,
+        400,
+        {
+          ok: false,
+          error:
+            "plan-mismatch",
+        },
+      );
+
+      return;
+    }
+
+    /*
+     * Don't allow a session to be "paid" twice.
+     */
+    if (
+      session.session.entitlementGranted
+    ) {
+      const existing =
+        ctx.entitlements.getEntitlement(
+          authed.userId,
+        );
+
+      writeJson(
+        res,
+        200,
+        {
+          ok: true,
+          alreadyCompleted:
+            true,
+          sessionId,
+          planId:
+            session.session.planId,
+          entitlement:
+            existing,
+          checkout:
+            session.session,
+        },
+      );
+
+      return;
+    }
+
+    const result =
+      await ctx.entitlements.completeMockPurchase({
+        userId:
+          authed.userId,
+
+        sessionId,
+
+        planId:
+          session.session.planId,
+      });
+
+    if (!result.ok) {
+      writeJson(
+        res,
+        result.status || 400,
+        result,
+      );
+
+      return;
+    }
+
+    /*
+     * Mark the checkout session as completed.
+     */
+    const returned =
+      ctx.checkout.handleReturn({
+        sessionId,
+        status: "success",
+      });
+
+    writeJson(
+      res,
+      200,
+      {
+        ok: true,
+
+        sessionId,
+
+        planId:
+          session.session.planId,
+
+        entitlement:
+          result.entitlement,
+
+        subscription:
+          result.subscription ||
+          null,
+
+        supabaseEntitlement:
+          result.supabaseEntitlement ||
+          null,
+
+        checkout:
+          returned,
+      },
+    );
+
+    return;
+  }
+
+  /*
+   * Entitlement/payment webhook.
+   *
+   * handleWebhook() is async because confirmed purchases
+   * are now synchronized to Supabase.
+   */
+  if (
+    req.method === "POST" &&
     path ===
       "/v1/webhooks/entitlements"
   ) {
@@ -530,31 +904,30 @@ async function handleRequest(
       );
 
     const body =
-      await readRaw(
-        req,
-      );
+      await readRaw(req);
 
     const result =
-      ctx.entitlements.handleWebhook(
-        {
-          body,
-          signature,
-          timestamp,
-        },
-      );
+      await ctx.entitlements.handleWebhook({
+        body,
+        signature,
+        timestamp,
+      });
 
     writeJson(
       res,
       result.ok
         ? 200
-        : result.status ||
-            400,
+        : result.status || 400,
       result,
     );
 
     return;
   }
 
+  /*
+   * Everything below this point is owner-scoped API
+   * functionality.
+   */
   let ownerUserId =
     String(
       req.headers[
@@ -577,9 +950,7 @@ async function handleRequest(
     if (authed.ok) {
       ownerUserId =
         authed.userId;
-    } else if (
-      !ownerUserId
-    ) {
+    } else if (!ownerUserId) {
       writeJson(
         res,
         401,
@@ -597,9 +968,7 @@ async function handleRequest(
 
   if (
     !ownerUserId &&
-    path.startsWith(
-      "/v1/",
-    )
+    path.startsWith("/v1/")
   ) {
     writeJson(
       res,
@@ -614,9 +983,11 @@ async function handleRequest(
     return;
   }
 
+  /*
+   * Create job.
+   */
   if (
-    req.method ===
-      "POST" &&
+    req.method === "POST" &&
     path === "/v1/jobs"
   ) {
     const body =
@@ -633,20 +1004,17 @@ async function handleRequest(
           body.language,
 
         mode:
-          body.mode ||
-          "pair",
+          body.mode || "pair",
 
         settings:
-          body.settings ||
-          {},
+          body.settings || {},
       });
 
     writeJson(
       res,
       result.ok
         ? 200
-        : result.status ||
-            400,
+        : result.status || 400,
       result,
     );
 
@@ -654,9 +1022,8 @@ async function handleRequest(
   }
 
   const jobMatch =
-    /^\/v1\/jobs\/([^/]+)(?:\/(credentials|uploads|finalize|result\/reveal|result\/forget))?$/.exec(
-      path,
-    );
+    /^\/v1\/jobs\/([^/]+)(?:\/(credentials|uploads|finalize|result\/reveal|result\/forget))?$/
+      .exec(path);
 
   if (!jobMatch) {
     writeJson(
@@ -664,8 +1031,7 @@ async function handleRequest(
       404,
       {
         ok: false,
-        error:
-          "not-found",
+        error: "not-found",
       },
     );
 
@@ -680,9 +1046,11 @@ async function handleRequest(
   const action =
     jobMatch[2] || null;
 
+  /*
+   * Get job.
+   */
   if (
-    req.method ===
-      "GET" &&
+    req.method === "GET" &&
     !action
   ) {
     const result =
@@ -695,152 +1063,137 @@ async function handleRequest(
       res,
       result.ok
         ? 200
-        : result.status ||
-            404,
+        : result.status || 404,
       result,
     );
 
     return;
   }
 
+  /*
+   * Attach Moss credential.
+   */
   if (
-    req.method ===
-      "POST" &&
-    action ===
-      "credentials"
+    req.method === "POST" &&
+    action === "credentials"
   ) {
     const body =
-      await readJson(
-        req,
-      );
+      await readJson(req);
 
     const result =
-      ctx.service.attachCredential(
-        {
-          jobId,
-          ownerUserId,
-          mossUserId:
-            body.mossUserId,
-        },
-      );
+      ctx.service.attachCredential({
+        jobId,
+        ownerUserId,
+        mossUserId:
+          body.mossUserId,
+      });
 
     writeJson(
       res,
       result.ok
         ? 200
-        : result.status ||
-            400,
+        : result.status || 400,
       result,
     );
 
     return;
   }
 
+  /*
+   * Upload files.
+   */
   if (
-    req.method ===
-      "POST" &&
+    req.method === "POST" &&
     action === "uploads"
   ) {
     const body =
-      await readJson(
-        req,
-      );
+      await readJson(req);
 
     const result =
-      ctx.service.uploadFiles(
-        {
-          jobId,
-          ownerUserId,
-          files:
-            body.files ||
-            [],
-        },
-      );
+      ctx.service.uploadFiles({
+        jobId,
+        ownerUserId,
+        files:
+          body.files || [],
+      });
 
     writeJson(
       res,
       result.ok
         ? 200
-        : result.status ||
-            400,
+        : result.status || 400,
       result,
     );
 
     return;
   }
 
+  /*
+   * Finalize job.
+   */
   if (
-    req.method ===
-      "POST" &&
-    action ===
-      "finalize"
+    req.method === "POST" &&
+    action === "finalize"
   ) {
     const result =
-      await ctx.service.finalize(
-        {
-          jobId,
-          ownerUserId,
-        },
-      );
+      await ctx.service.finalize({
+        jobId,
+        ownerUserId,
+      });
 
     writeJson(
       res,
       result.ok
         ? 200
-        : result.status ||
-            400,
+        : result.status || 400,
       result,
     );
 
     return;
   }
 
+  /*
+   * Reveal result.
+   */
   if (
-    req.method ===
-      "POST" &&
-    action ===
-      "result/reveal"
+    req.method === "POST" &&
+    action === "result/reveal"
   ) {
     const result =
-      ctx.service.revealResult(
-        {
-          jobId,
-          ownerUserId,
-        },
-      );
+      ctx.service.revealResult({
+        jobId,
+        ownerUserId,
+      });
 
     writeJson(
       res,
       result.ok
         ? 200
-        : result.status ||
-            400,
+        : result.status || 400,
       result,
     );
 
     return;
   }
 
+  /*
+   * Forget result.
+   */
   if (
-    req.method ===
-      "POST" &&
-    action ===
-      "result/forget"
+    req.method === "POST" &&
+    action === "result/forget"
   ) {
     const result =
-      ctx.service.forgetResult(
-        {
-          jobId,
-          ownerUserId,
-        },
-      );
+      ctx.service.forgetResult({
+        jobId,
+        ownerUserId,
+      });
 
     writeJson(
       res,
       result.ok
         ? 200
-        : result.status ||
-            400,
+        : result.status || 400,
       result,
     );
 
@@ -865,15 +1218,12 @@ function applyCors(
 ) {
   const origin =
     String(
-      req.headers.origin ||
-        "",
+      req.headers.origin || "",
     );
 
   const allowed =
     !origin ||
-    corsOrigins.has(
-      origin,
-    ) ||
+    corsOrigins.has(origin) ||
     origin.startsWith(
       "chrome-extension://",
     ) ||
@@ -909,7 +1259,14 @@ function applyCors(
 
   res.setHeader(
     "Access-Control-Allow-Headers",
-    "Content-Type, Authorization, X-Owner-User-Id, X-Idempotency-Key, X-Webhook-Signature, X-Webhook-Timestamp",
+    [
+      "Content-Type",
+      "Authorization",
+      "X-Owner-User-Id",
+      "X-Idempotency-Key",
+      "X-Webhook-Signature",
+      "X-Webhook-Timestamp",
+    ].join(", "),
   );
 }
 
@@ -952,8 +1309,7 @@ async function readJson(
   }
 
   if (
-    chunks.length ===
-    0
+    chunks.length === 0
   ) {
     return {};
   }
@@ -970,9 +1326,7 @@ async function readJson(
   }
 
   try {
-    return JSON.parse(
-      raw,
-    );
+    return JSON.parse(raw);
   } catch {
     return {};
   }
@@ -987,9 +1341,7 @@ async function readRaw(
     const chunk of req
   ) {
     chunks.push(
-      Buffer.from(
-        chunk,
-      ),
+      Buffer.from(chunk),
     );
   }
 
@@ -1003,14 +1355,10 @@ async function main() {
     process.env;
 
   const host =
-    resolveListenHost(
-      env,
-    );
+    resolveListenHost(env);
 
   const port =
-    resolveListenPort(
-      env,
-    );
+    resolveListenPort(env);
 
   console.log(
     `[moss-pair-api] starting host=${host} port=${port} nodeEnv=${env.NODE_ENV || ""} railway=${Boolean(env.RAILWAY_ENVIRONMENT)}`,
@@ -1041,8 +1389,7 @@ async function main() {
 }
 
 if (
-  require.main ===
-  module
+  require.main === module
 ) {
   main().catch(
     (error) => {

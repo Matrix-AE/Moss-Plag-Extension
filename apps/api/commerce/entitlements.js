@@ -1,28 +1,75 @@
 "use strict";
 
 /**
- * Webhooks, entitlements, and short-lived license tokens.
+ * Webhooks, entitlements, license tokens, and commercial state.
+ *
  * Server-owned commercial state; secrets never ship in extension code.
+ *
+ * Paid plans:
+ *   pair  -> $15 / 15 runs / max 2 files
+ *   batch -> $50 / 50 runs / max 50 files
+ *
+ * Payment-provider integration can be swapped in later.
+ * For now, successful purchase events can come from the existing
+ * signed webhook flow or the development-only mock completion flow.
  */
 
-const crypto =
-  require("node:crypto");
+const crypto = require("node:crypto");
+const fs = require("node:fs");
+const path = require("node:path");
 
-const fs =
-  require("node:fs");
+const offer = require("./customer-offer");
 
-const path =
-  require("node:path");
+const {
+  createSubscription,
+  getUserSubscriptions,
+} = require("../db/subscriptions");
 
-const offer =
-  require("./customer-offer");
+const {
+  getEntitlement:
+    getSupabaseEntitlement,
+  upsertEntitlement,
+} = require("../db/entitlements");
 
-const ENTITLEMENTS_VERSION = 1;
+const ENTITLEMENTS_VERSION = 3;
 
 const DEFAULT_TOKEN_TTL_MS =
   15 * 60 * 1000;
 
 const MAX_SKEW_SEC = 300;
+
+function normalizePlanId(value) {
+  const id = String(value || "")
+    .trim()
+    .toLowerCase();
+
+  if (id === "batch") {
+    return "batch";
+  }
+
+  if (id === "pair") {
+    return "pair";
+  }
+
+  return "";
+}
+
+function getPaidOffer(planId) {
+  const normalized =
+    normalizePlanId(planId);
+
+  if (!normalized) {
+    return null;
+  }
+
+  try {
+    return offer.getPaidOfferOrThrow(
+      normalized,
+    );
+  } catch {
+    return null;
+  }
+}
 
 function createEntitlementService({
   webhookSecret,
@@ -34,17 +81,12 @@ function createEntitlementService({
 } = {}) {
   if (
     !webhookSecret ||
-    String(
-      webhookSecret,
-    ).length < 16
+    String(webhookSecret).length < 16
   ) {
     throw new Error(
       "webhook-secret-required",
     );
   }
-
-  const approved =
-    offer.getApprovedOffer();
 
   const entitlements =
     new Map();
@@ -68,9 +110,7 @@ function createEntitlementService({
     }
 
     const directory =
-      path.dirname(
-        storePath,
-      );
+      path.dirname(storePath);
 
     fs.mkdirSync(
       directory,
@@ -80,22 +120,20 @@ function createEntitlementService({
     );
 
     const payload = {
-      version: 1,
+      version:
+        ENTITLEMENTS_VERSION,
 
-      entitlements:
-        [
-          ...entitlements.values(),
-        ],
+      entitlements: [
+        ...entitlements.values(),
+      ],
 
-      processedEvents:
-        [
-          ...processedEvents.keys(),
-        ],
+      processedEvents: [
+        ...processedEvents.keys(),
+      ],
 
-      sessionsPurchased:
-        [
-          ...sessionsPurchased.entries(),
-        ],
+      sessionsPurchased: [
+        ...sessionsPurchased.entries(),
+      ],
 
       audits,
     };
@@ -122,9 +160,7 @@ function createEntitlementService({
   function loadPersistedState() {
     if (
       !storePath ||
-      !fs.existsSync(
-        storePath,
-      )
+      !fs.existsSync(storePath)
     ) {
       return;
     }
@@ -200,14 +236,11 @@ function createEntitlementService({
         );
       }
     } catch {
-      // Keep the API bootable if
-      // the optional local ledger is bad.
+      // Keep the API bootable if the local ledger is bad.
     }
   }
 
-  function audit(
-    entry,
-  ) {
+  function audit(entry) {
     audits.push({
       ...entry,
       at: now(),
@@ -238,8 +271,7 @@ function createEntitlementService({
       );
 
     if (
-      skew >
-      MAX_SKEW_SEC
+      skew > MAX_SKEW_SEC
     ) {
       return {
         ok: false,
@@ -260,20 +292,15 @@ function createEntitlementService({
         .digest("hex");
 
     const a =
-      Buffer.from(
-        expected,
-      );
+      Buffer.from(expected);
 
     const b =
       Buffer.from(
-        String(
-          signature || "",
-        ),
+        String(signature || ""),
       );
 
     if (
-      a.length !==
-        b.length ||
+      a.length !== b.length ||
       !crypto.timingSafeEqual(
         a,
         b,
@@ -291,124 +318,140 @@ function createEntitlementService({
     };
   }
 
-  function handleWebhook({
-    body,
-    signature,
-    timestamp,
+  /**
+   * Persist the purchase to Supabase.
+   *
+   * We use paymentReference as our idempotency key.
+   * If the subscription already exists, it is not inserted again.
+   */
+  async function syncPurchaseToSupabase({
+    userId,
+    planId,
+    status,
+    priceUsd,
+    purchasedAt,
+    offerVersion,
+    paymentProvider,
+    paymentReference,
+    totalRuns,
+    remainingRuns,
+    maxFilesPerRun,
   }) {
-    const sigCheck =
-      verifySignature({
-        body,
-        signature,
-        timestamp,
-      });
-
-    if (!sigCheck.ok) {
-      return sigCheck;
-    }
-
-    let event;
-
-    try {
-      event =
-        JSON.parse(body);
-    } catch {
-      return {
-        ok: false,
-        error: "bad-json",
-      };
-    }
-
-    if (
-      !event?.id ||
-      !event?.type
-    ) {
-      return {
-        ok: false,
-        error: "bad-event",
-      };
-    }
-
-    if (
-      processedEvents.has(
-        event.id,
-      )
-    ) {
-      return {
-        ok: false,
-        error: "replay",
-      };
-    }
-
-    let result;
-
-    switch (event.type) {
-      case "checkout.session.completed":
-        result =
-          applyPurchase(
-            event,
-          );
-        break;
-
-      case "charge.refunded":
-        result =
-          applyStatus(
-            event,
-            "refunded",
-          );
-        break;
-
-      case "charge.dispute.created":
-        result =
-          applyStatus(
-            event,
-            "disputed",
-          );
-        break;
-
-      default:
-        processedEvents.set(
-          event.id,
-          true,
-        );
-
-        audit({
-          action:
-            "webhook-ignored",
-          eventId:
-            event.id,
-          type:
-            event.type,
-        });
-
-        persistState();
-
-        return {
-          ok: true,
-          ignored: true,
-        };
-    }
-
-    if (result.ok) {
-      processedEvents.set(
-        event.id,
-        true,
+    const subscriptions =
+      await getUserSubscriptions(
+        userId,
       );
 
-      persistState();
+    const alreadyRecorded =
+      subscriptions.some(
+        (subscription) =>
+          paymentReference &&
+          subscription.payment_reference ===
+            paymentReference,
+      );
+
+    let subscription =
+      alreadyRecorded
+        ? subscriptions.find(
+            (item) =>
+              paymentReference &&
+              item.payment_reference ===
+                paymentReference,
+          )
+        : null;
+
+    if (!alreadyRecorded) {
+      subscription =
+        await createSubscription({
+          userId,
+
+          plan: planId,
+
+          status,
+
+          priceUsd,
+
+          purchasedAt:
+
+            purchasedAt ||
+            new Date().toISOString(),
+
+          offerVersion,
+
+          paymentProvider,
+
+          paymentReference,
+        });
     }
 
-    return result;
+    const entitlement =
+      await upsertEntitlement({
+        userId,
+
+        status,
+
+        totalRuns,
+
+        remainingRuns,
+
+        maxFilesPerRun,
+
+        offerVersion,
+
+        purchasedAt:
+          purchasedAt ||
+          new Date().toISOString(),
+      });
+
+    return {
+      subscription,
+      entitlement,
+    };
   }
 
-  function applyPurchase(
+  /**
+   * Apply a successful paid purchase.
+   *
+   * This is async because the confirmed purchase is now also persisted
+   * to Supabase.
+   */
+  async function applyPurchase(
     event,
   ) {
+    const planId =
+      normalizePlanId(
+        event.planId,
+      );
+
+    /*
+     * Backward compatibility:
+     * older checkout events without planId are treated as Pair.
+     */
+    const effectivePlanId =
+      planId || "pair";
+
+    const selectedOffer =
+      getPaidOffer(
+        effectivePlanId,
+      );
+
+    if (!selectedOffer) {
+      return {
+        ok: false,
+        error:
+          "unknown-plan",
+      };
+    }
+
+    /*
+     * Never trust client pricing.
+     * The amount/version must match our server catalog.
+     */
     if (
       event.amountUsd !==
-        approved.priceUsd ||
+        selectedOffer.priceUsd ||
       event.offerVersion !==
-        approved.version
+        selectedOffer.version
     ) {
       return {
         ok: false,
@@ -443,6 +486,99 @@ function createEntitlementService({
       return {
         ok: true,
         duplicate: true,
+        entitlement:
+          getEntitlement(
+            event.userId,
+          ),
+      };
+    }
+
+    const purchasedAt =
+      event.purchasedAt ||
+      new Date(
+        now(),
+      ).toISOString();
+
+    const paymentReference =
+      String(
+        event.paymentReference ||
+          event.paymentIntentId ||
+          event.id ||
+          event.sessionId ||
+          "",
+      ).trim();
+
+    if (!paymentReference) {
+      return {
+        ok: false,
+        error:
+          "payment-reference-required",
+      };
+    }
+
+    /*
+     * Supabase is written before the event is marked processed.
+     * If the DB write fails, the event remains retryable.
+     */
+    let supabaseResult;
+
+    try {
+      supabaseResult =
+        await syncPurchaseToSupabase({
+          userId:
+            event.userId,
+
+          planId:
+            selectedOffer.id,
+
+          status:
+            "active",
+
+          priceUsd:
+            selectedOffer.priceUsd,
+
+          purchasedAt,
+
+          offerVersion:
+            selectedOffer.version,
+
+          paymentProvider:
+            event.paymentProvider ||
+            "mock",
+
+          paymentReference,
+
+          totalRuns:
+            selectedOffer.runsIncluded,
+
+          remainingRuns:
+            selectedOffer.runsIncluded,
+
+          maxFilesPerRun:
+            selectedOffer.maxFilesPerRun,
+        });
+    } catch (error) {
+      console.error(
+        "[supabase] purchase sync failed",
+        {
+          userId:
+            event.userId,
+
+          planId:
+            selectedOffer.id,
+
+          paymentReference,
+
+          message:
+            error?.message ||
+            String(error),
+        },
+      );
+
+      return {
+        ok: false,
+        error:
+          "supabase-sync-failed",
       };
     }
 
@@ -450,27 +586,54 @@ function createEntitlementService({
       userId:
         event.userId,
 
+      planId:
+        selectedOffer.id,
+
+      planName:
+        selectedOffer.name,
+
       status:
         "active",
 
       remaining:
-        approved.runsIncluded,
+        selectedOffer.runsIncluded,
 
       total:
-        approved.runsIncluded,
+        selectedOffer.runsIncluded,
 
       maxFilesPerRun:
-        approved.maxFilesPerRun,
+        selectedOffer.maxFilesPerRun,
 
       offerVersion:
-        approved.version,
+        selectedOffer.version,
+
+      priceUsd:
+        selectedOffer.priceUsd,
+
+      currency:
+        selectedOffer.currency,
 
       sessionId:
         event.sessionId ||
         null,
 
       purchasedAt:
+
         now(),
+
+      paymentProvider:
+        event.paymentProvider ||
+        "mock",
+
+      paymentReference,
+
+      supabaseSubscriptionId:
+        supabaseResult.subscription?.id ||
+        null,
+
+      supabaseEntitlementId:
+        supabaseResult.entitlement?.id ||
+        null,
     };
 
     entitlements.set(
@@ -490,22 +653,161 @@ function createEntitlementService({
     audit({
       action:
         "purchase",
+
       eventId:
         event.id,
+
       userId:
         event.userId,
+
+      planId:
+        selectedOffer.id,
+
+      amountUsd:
+        selectedOffer.priceUsd,
+
+      sessionId:
+        event.sessionId ||
+        null,
+
+      paymentReference,
     });
 
     return {
       ok: true,
+
       entitlement:
         publicEntitlement(
           record,
         ),
+
+      subscription:
+        supabaseResult.subscription ||
+        null,
+
+      supabaseEntitlement:
+        supabaseResult.entitlement ||
+        null,
     };
   }
 
-  function applyStatus(
+  async function handleWebhook({
+    body,
+    signature,
+    timestamp,
+  }) {
+    const sigCheck =
+      verifySignature({
+        body,
+        signature,
+        timestamp,
+      });
+
+    if (!sigCheck.ok) {
+      return sigCheck;
+    }
+
+    let event;
+
+    try {
+      event =
+        JSON.parse(body);
+    } catch {
+      return {
+        ok: false,
+        error:
+          "bad-json",
+      };
+    }
+
+    if (
+      !event?.id ||
+      !event?.type
+    ) {
+      return {
+        ok: false,
+        error:
+          "bad-event",
+      };
+    }
+
+    if (
+      processedEvents.has(
+        event.id,
+      )
+    ) {
+      return {
+        ok: false,
+        error: "replay",
+      };
+    }
+
+    let result;
+
+    switch (
+      event.type
+    ) {
+      case "checkout.session.completed":
+        result =
+          await applyPurchase(
+            event,
+          );
+        break;
+
+      case "charge.refunded":
+        result =
+          await applyStatus(
+            event,
+            "refunded",
+          );
+        break;
+
+      case "charge.dispute.created":
+        result =
+          await applyStatus(
+            event,
+            "disputed",
+          );
+        break;
+
+      default:
+        processedEvents.set(
+          event.id,
+          true,
+        );
+
+        audit({
+          action:
+            "webhook-ignored",
+
+          eventId:
+            event.id,
+
+          type:
+            event.type,
+        });
+
+        persistState();
+
+        return {
+          ok: true,
+          ignored: true,
+        };
+    }
+
+    if (result.ok) {
+      processedEvents.set(
+        event.id,
+        true,
+      );
+
+      persistState();
+    }
+
+    return result;
+  }
+
+  async function applyStatus(
     event,
     status,
   ) {
@@ -535,22 +837,170 @@ function createEntitlementService({
         0;
     }
 
+    /*
+     * Mirror the status/quota to Supabase.
+     *
+     * There is no subscription ID requirement here because the DB adapter
+     * can be updated separately later when the real payment provider is added.
+     */
+    try {
+      await upsertEntitlement({
+        userId:
+          event.userId,
+
+        status,
+
+        totalRuns:
+          record.total,
+
+        remainingRuns:
+          record.remaining,
+
+        maxFilesPerRun:
+          record.maxFilesPerRun,
+
+        offerVersion:
+          record.offerVersion,
+
+        purchasedAt:
+          record.purchasedAt
+            ? new Date(
+                record.purchasedAt,
+              ).toISOString()
+            : null,
+      });
+    } catch (error) {
+      console.error(
+        "[supabase] entitlement status sync failed",
+        {
+          userId:
+            event.userId,
+
+          status,
+
+          message:
+            error?.message ||
+            String(error),
+        },
+      );
+
+      return {
+        ok: false,
+        error:
+          "supabase-sync-failed",
+      };
+    }
+
     audit({
       action:
         status,
+
       eventId:
         event.id,
+
       userId:
         event.userId,
+
+      planId:
+        record.planId ||
+        null,
     });
 
     return {
       ok: true,
+
       entitlement:
         publicEntitlement(
           record,
         ),
     };
+  }
+
+  /**
+   * Development-only mock purchase completion.
+   *
+   * This does NOT bypass server-side plan validation.
+   * It simply creates the same event shape that the eventual
+   * payment provider webhook will produce.
+   *
+   * The HTTP route that exposes this function should be disabled
+   * in production unless explicitly enabled.
+   */
+  async function completeMockPurchase({
+    userId,
+    sessionId,
+    planId,
+  }) {
+    if (!userId) {
+      return {
+        ok: false,
+        error:
+          "missing-user",
+      };
+    }
+
+    const effectivePlanId =
+      normalizePlanId(
+        planId,
+      );
+
+    const selectedOffer =
+      getPaidOffer(
+        effectivePlanId,
+      );
+
+    if (!selectedOffer) {
+      return {
+        ok: false,
+        error:
+          "unknown-plan",
+      };
+    }
+
+    if (!sessionId) {
+      return {
+        ok: false,
+        error:
+          "missing-session",
+      };
+    }
+
+    const eventId =
+      `mock_evt_${crypto.randomBytes(12).toString("hex")}`;
+
+    const paymentReference =
+      `mock_${sessionId}`;
+
+    return applyPurchase({
+      id:
+        eventId,
+
+      type:
+        "checkout.session.completed",
+
+      userId,
+
+      planId:
+        selectedOffer.id,
+
+      amountUsd:
+        selectedOffer.priceUsd,
+
+      offerVersion:
+        selectedOffer.version,
+
+      sessionId,
+
+      paymentProvider:
+        "mock",
+
+      paymentReference,
+
+      purchasedAt:
+        new Date(
+          now(),
+        ).toISOString(),
+    });
   }
 
   function applySupportOverride({
@@ -559,6 +1009,7 @@ function createEntitlementService({
     remaining,
     actor,
     reason,
+    planId = "pair",
   }) {
     if (
       !userId ||
@@ -572,20 +1023,40 @@ function createEntitlementService({
       };
     }
 
+    const selectedOffer =
+      getPaidOffer(
+        planId,
+      ) ||
+      getPaidOffer(
+        "pair",
+      );
+
     const record =
       entitlements.get(
         userId,
       ) || {
         userId,
 
+        planId:
+          selectedOffer.id,
+
+        planName:
+          selectedOffer.name,
+
         total:
-          approved.runsIncluded,
+          selectedOffer.runsIncluded,
 
         maxFilesPerRun:
-          approved.maxFilesPerRun,
+          selectedOffer.maxFilesPerRun,
 
         offerVersion:
-          approved.version,
+          selectedOffer.version,
+
+        priceUsd:
+          selectedOffer.priceUsd,
+
+        currency:
+          selectedOffer.currency,
 
         purchasedAt:
           now(),
@@ -595,7 +1066,12 @@ function createEntitlementService({
       status;
 
     record.remaining =
-      remaining;
+      Math.max(
+        0,
+        Number(
+          remaining,
+        ) || 0,
+      );
 
     entitlements.set(
       userId,
@@ -605,17 +1081,24 @@ function createEntitlementService({
     audit({
       action:
         "support-override",
+
       userId,
       actor,
       reason,
       status,
-      remaining,
+
+      remaining:
+        record.remaining,
+
+      planId:
+        record.planId,
     });
 
     persistState();
 
     return {
       ok: true,
+
       entitlement:
         publicEntitlement(
           record,
@@ -635,6 +1118,7 @@ function createEntitlementService({
       return {
         status: "none",
         remaining: 0,
+        total: 0,
       };
     }
 
@@ -702,20 +1186,29 @@ function createEntitlementService({
     audit({
       action:
         "issue-token",
+
       userId,
       deviceId,
     });
 
     return {
       ok: true,
+
       token,
+
       expiresAt,
+
       scope:
         Object.freeze({
           userId,
           deviceId,
+
           offerVersion:
             record.offerVersion,
+
+          planId:
+            record.planId ||
+            null,
         }),
     };
   }
@@ -726,7 +1219,9 @@ function createEntitlementService({
     deviceId = null,
   }) {
     const entry =
-      tokens.get(token);
+      tokens.get(
+        token,
+      );
 
     if (
       !entry ||
@@ -799,16 +1294,23 @@ function createEntitlementService({
 
     return {
       ok: true,
+
       remaining:
         record.remaining,
+
       status:
         record.status,
+
       offerVersion:
         record.offerVersion,
+
+      planId:
+        record.planId ||
+        null,
     };
   }
 
-  function consumeRun({
+  async function consumeRun({
     userId,
     token = null,
     deviceId = null,
@@ -867,10 +1369,69 @@ function createEntitlementService({
 
     record.remaining -= 1;
 
+    /*
+     * Keep the database quota in sync with the server quota.
+     */
+    try {
+      await upsertEntitlement({
+        userId,
+
+        status:
+          record.status,
+
+        totalRuns:
+          record.total,
+
+        remainingRuns:
+          record.remaining,
+
+        maxFilesPerRun:
+          record.maxFilesPerRun,
+
+        offerVersion:
+          record.offerVersion,
+
+        purchasedAt:
+          record.purchasedAt
+            ? new Date(
+                record.purchasedAt,
+              ).toISOString()
+            : null,
+      });
+    } catch (error) {
+      /*
+       * Roll back the local decrement if the authoritative DB update
+       * failed, so a temporary DB outage does not silently consume a run.
+       */
+      record.remaining += 1;
+
+      console.error(
+        "[supabase] consume sync failed",
+        {
+          userId,
+          message:
+            error?.message ||
+            String(error),
+        },
+      );
+
+      return {
+        ok: false,
+        error:
+          "supabase-sync-failed",
+      };
+    }
+
     audit({
       action:
         "consume",
+
       userId,
+
+      planId:
+        record.planId ||
+        null,
+
       remaining:
         record.remaining,
     });
@@ -879,6 +1440,7 @@ function createEntitlementService({
 
     return {
       ok: true,
+
       remaining:
         record.remaining,
     };
@@ -890,6 +1452,14 @@ function createEntitlementService({
     return Object.freeze({
       userId:
         record.userId,
+
+      planId:
+        record.planId ||
+        "pair",
+
+      planName:
+        record.planName ||
+        null,
 
       status:
         record.status ||
@@ -911,8 +1481,36 @@ function createEntitlementService({
         record.offerVersion ??
         null,
 
+      priceUsd:
+        record.priceUsd ??
+        null,
+
+      currency:
+        record.currency ||
+        null,
+
+      sessionId:
+        record.sessionId ||
+        null,
+
       purchasedAt:
         record.purchasedAt ??
+        null,
+
+      paymentProvider:
+        record.paymentProvider ||
+        null,
+
+      paymentReference:
+        record.paymentReference ||
+        null,
+
+      supabaseSubscriptionId:
+        record.supabaseSubscriptionId ||
+        null,
+
+      supabaseEntitlementId:
+        record.supabaseEntitlementId ||
         null,
     });
   }
@@ -922,6 +1520,8 @@ function createEntitlementService({
       ENTITLEMENTS_VERSION,
 
     handleWebhook,
+
+    completeMockPurchase,
 
     getEntitlement,
 
@@ -938,6 +1538,15 @@ function createEntitlementService({
     audits: () => [
       ...audits,
     ],
+
+    /*
+     * Exposed only for internal checkout/server tests.
+     */
+    _entitlements:
+      entitlements,
+
+    _sessionsPurchased:
+      sessionsPurchased,
   };
 }
 
