@@ -3,11 +3,16 @@
 /**
  * Email + password accounts with OTP confirmation (Resend).
  * Users and password hashes persist to AUTH_STORE_PATH (JSON file).
+ *
+ * During the database migration phase, user profile data is also
+ * mirrored into Supabase. The local auth store remains authoritative
+ * for authentication until the migration is complete.
  */
 
 const crypto = require("node:crypto");
 const fs = require("node:fs");
 const path = require("node:path");
+
 const {
   sendMagicCodeEmail,
 } = require("./resend-mail");
@@ -23,6 +28,77 @@ const REFRESH_TTL_MS =
 
 const MIN_PASSWORD_LEN = 10;
 
+/**
+ * Mirrors a user profile into Supabase.
+ *
+ * This is intentionally best-effort during the migration.
+ * If Supabase is temporarily unavailable, authentication
+ * continues using the existing local auth store.
+ */
+async function syncUserToSupabase(
+  user,
+) {
+  console.log(
+    "[supabase] syncing user",
+    {
+      userId:
+        user.userId,
+      email:
+        user.email,
+    },
+  );
+
+  try {
+    const {
+      upsertUser,
+    } = require("../db/users");
+
+    const result =
+      await upsertUser({
+        userId:
+          user.userId,
+
+        email:
+          user.email,
+
+        emailVerified:
+          Boolean(
+            user.emailVerified,
+          ),
+      });
+
+    console.log(
+      "[supabase] user sync succeeded",
+      {
+        userId:
+          user.userId,
+        email:
+          user.email,
+        rowId:
+          result?.id,
+      },
+    );
+
+    return {
+      ok: true,
+      data: result,
+    };
+  } catch (error) {
+    console.error(
+      "[supabase] user sync failed",
+      error,
+    );
+
+    return {
+      ok: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : String(error),
+    };
+  }
+}
+
 function defaultStorePath() {
   return (
     process.env.AUTH_STORE_PATH ||
@@ -37,18 +113,24 @@ function defaultStorePath() {
 
 function createPasswordAuthService({
   now = () => Date.now(),
-  storePath = defaultStorePath(),
-  sendOtp = sendMagicCodeEmail,
+  storePath =
+    defaultStorePath(),
+  sendOtp =
+    sendMagicCodeEmail,
   production =
     process.env.NODE_ENV ===
     "production",
 } = {}) {
   const state =
-    loadStore(storePath);
+    loadStore(
+      storePath,
+    );
 
-  const otps = new Map();
+  const otps =
+    new Map();
 
-  const sessions = new Map();
+  const sessions =
+    new Map();
 
   const refreshByHash =
     new Map();
@@ -63,30 +145,40 @@ function createPasswordAuthService({
     );
   }
 
-  function findUser(email) {
+  function findUser(
+    email,
+  ) {
     const key =
-      normalizeEmail(email);
+      normalizeEmail(
+        email,
+      );
 
     return (
       state.users.find(
-        (u) => u.email === key,
+        (u) =>
+          u.email === key,
       ) || null
     );
   }
 
-  function register({
+  async function register({
     email,
     password,
   }) {
     const normalized =
-      normalizeEmail(email);
+      normalizeEmail(
+        email,
+      );
 
     if (
-      !isEmail(normalized)
+      !isEmail(
+        normalized,
+      )
     ) {
       return {
         ok: false,
-        error: "invalid-email",
+        error:
+          "invalid-email",
         status: 400,
       };
     }
@@ -96,10 +188,13 @@ function createPasswordAuthService({
         password,
       );
 
-    if (!passwordResult.ok) {
+    if (
+      !passwordResult.ok
+    ) {
       return {
         ok: false,
-        error: "weak-password",
+        error:
+          "weak-password",
         status: 400,
         minLength:
           MIN_PASSWORD_LEN,
@@ -109,11 +204,14 @@ function createPasswordAuthService({
     }
 
     if (
-      findUser(normalized)
+      findUser(
+        normalized,
+      )
     ) {
       return {
         ok: false,
-        error: "email-taken",
+        error:
+          "email-taken",
         status: 409,
       };
     }
@@ -122,16 +220,22 @@ function createPasswordAuthService({
       userId:
         `user_${crypto.randomBytes(8).toString("hex")}`,
 
-      email: normalized,
+      email:
+        normalized,
 
       passwordHash:
-        hashPassword(password),
+        hashPassword(
+          password,
+        ),
 
-      emailVerified: false,
+      emailVerified:
+        false,
 
-      createdAt: now(),
+      createdAt:
+        now(),
 
-      updatedAt: now(),
+      updatedAt:
+        now(),
     };
 
     state.users.push(
@@ -140,22 +244,38 @@ function createPasswordAuthService({
 
     persist();
 
+    /*
+     * Mirror the new user into Supabase.
+     * Authentication still uses the local
+     * auth store during this migration phase.
+     */
+    await syncUserToSupabase(
+      user,
+    );
+
     return startOtp({
-      email: normalized,
-      purpose: "register",
+      email:
+        normalized,
+
+      purpose:
+        "register",
     });
   }
 
-  function login({
+  async function login({
     email,
     password,
     deviceId,
   }) {
     const normalized =
-      normalizeEmail(email);
+      normalizeEmail(
+        email,
+      );
 
     const user =
-      findUser(normalized);
+      findUser(
+        normalized,
+      );
 
     if (!user) {
       return {
@@ -184,6 +304,7 @@ function createPasswordAuthService({
       getRememberedDevice({
         userId:
           user.userId,
+
         deviceId,
       });
 
@@ -193,13 +314,16 @@ function createPasswordAuthService({
     ) {
       return issueSession({
         user,
+
         deviceId:
           remembered.deviceId,
       });
     }
 
     return startOtp({
-      email: normalized,
+      email:
+        normalized,
+
       purpose:
         user.emailVerified
           ? "login"
@@ -220,7 +344,9 @@ function createPasswordAuthService({
     adminEmails = "",
   }) {
     const normalized =
-      normalizeEmail(email);
+      normalizeEmail(
+        email,
+      );
 
     const allowlist =
       new Set(
@@ -228,12 +354,15 @@ function createPasswordAuthService({
           adminEmails || "",
         )
           .split(",")
-          .map((value) =>
-            value
-              .trim()
-              .toLowerCase(),
+          .map(
+            (value) =>
+              value
+                .trim()
+                .toLowerCase(),
           )
-          .filter(Boolean),
+          .filter(
+            Boolean,
+          ),
       );
 
     if (
@@ -250,7 +379,9 @@ function createPasswordAuthService({
     }
 
     const user =
-      findUser(normalized);
+      findUser(
+        normalized,
+      );
 
     if (!user) {
       return {
@@ -277,8 +408,9 @@ function createPasswordAuthService({
 
     if (
       !deviceId ||
-      String(deviceId).length <
-        8
+      String(
+        deviceId,
+      ).length < 8
     ) {
       return {
         ok: false,
@@ -290,6 +422,7 @@ function createPasswordAuthService({
 
     return issueSession({
       user,
+
       deviceId,
     });
   }
@@ -298,16 +431,19 @@ function createPasswordAuthService({
     email,
     purpose,
   }) {
-    const code = String(
-      crypto.randomInt(
-        100000,
-        999999,
-      ),
-    );
+    const code =
+      String(
+        crypto.randomInt(
+          100000,
+          999999,
+        ),
+      );
 
     const nonce =
       crypto
-        .randomBytes(24)
+        .randomBytes(
+          24,
+        )
         .toString(
           "base64url",
         );
@@ -319,9 +455,11 @@ function createPasswordAuthService({
         purpose,
         codeHash:
           sha256(code),
+
         expiresAt:
           now() +
           OTP_TTL_MS,
+
         used: false,
       },
     );
@@ -329,7 +467,9 @@ function createPasswordAuthService({
     const mailed =
       await sendOtp({
         to: email,
+
         code,
+
         expiresInMinutes:
           Math.round(
             OTP_TTL_MS /
@@ -338,13 +478,18 @@ function createPasswordAuthService({
       });
 
     if (!mailed.ok) {
-      otps.delete(nonce);
+      otps.delete(
+        nonce,
+      );
 
       return {
         ok: false,
+
         error:
           "otp-email-failed",
+
         status: 502,
+
         detail:
           mailed.error ||
           mailed.detail ||
@@ -354,21 +499,28 @@ function createPasswordAuthService({
 
     const result = {
       ok: true,
+
       nonce,
+
       purpose,
+
       email,
+
       expiresInMs:
         OTP_TTL_MS,
+
       message:
         "Check your email for the verification code.",
     };
 
     if (
       !production &&
-      process.env.AUTH_RETURN_OTP ===
+      process.env
+        .AUTH_RETURN_OTP ===
         "1"
     ) {
-      result.devCode = code;
+      result.devCode =
+        code;
     }
 
     return result;
@@ -378,10 +530,14 @@ function createPasswordAuthService({
     email,
   }) {
     const normalized =
-      normalizeEmail(email);
+      normalizeEmail(
+        email,
+      );
 
     if (
-      !isEmail(normalized)
+      !isEmail(
+        normalized,
+      )
     ) {
       return {
         ok: false,
@@ -392,7 +548,9 @@ function createPasswordAuthService({
     }
 
     const user =
-      findUser(normalized);
+      findUser(
+        normalized,
+      );
 
     if (!user) {
       return {
@@ -404,17 +562,23 @@ function createPasswordAuthService({
     }
 
     return startOtp({
-      email: normalized,
-      purpose: "reset",
+      email:
+        normalized,
+
+      purpose:
+        "reset",
     });
   }
 
-  function resetPassword({
+  async function resetPassword({
     nonce,
     code,
     newPassword,
   }) {
-    if (!nonce || !code) {
+    if (
+      !nonce ||
+      !code
+    ) {
       return {
         ok: false,
         error:
@@ -424,7 +588,9 @@ function createPasswordAuthService({
     }
 
     const entry =
-      otps.get(nonce);
+      otps.get(
+        nonce,
+      );
 
     if (!entry) {
       return {
@@ -450,7 +616,8 @@ function createPasswordAuthService({
     if (entry.used) {
       return {
         ok: false,
-        error: "replay",
+        error:
+          "replay",
         status: 400,
       };
     }
@@ -461,7 +628,8 @@ function createPasswordAuthService({
     ) {
       return {
         ok: false,
-        error: "expired",
+        error:
+          "expired",
         status: 400,
       };
     }
@@ -469,7 +637,9 @@ function createPasswordAuthService({
     if (
       entry.codeHash !==
       sha256(
-        String(code).trim(),
+        String(
+          code,
+        ).trim(),
       )
     ) {
       return {
@@ -485,7 +655,9 @@ function createPasswordAuthService({
         newPassword,
       );
 
-    if (!passwordResult.ok) {
+    if (
+      !passwordResult.ok
+    ) {
       return {
         ok: false,
         error:
@@ -512,7 +684,8 @@ function createPasswordAuthService({
       };
     }
 
-    entry.used = true;
+    entry.used =
+      true;
 
     user.passwordHash =
       hashPassword(
@@ -531,19 +704,26 @@ function createPasswordAuthService({
 
     persist();
 
+    await syncUserToSupabase(
+      user,
+    );
+
     logoutAll(
       user.userId,
     );
 
     return {
       ok: true,
-      email: user.email,
+
+      email:
+        user.email,
+
       message:
         "Password updated. Sign in with your new password.",
     };
   }
 
-  function verifyOtp({
+  async function verifyOtp({
     nonce,
     code,
     deviceId,
@@ -562,7 +742,9 @@ function createPasswordAuthService({
     }
 
     const entry =
-      otps.get(nonce);
+      otps.get(
+        nonce,
+      );
 
     if (!entry) {
       return {
@@ -588,7 +770,8 @@ function createPasswordAuthService({
     if (entry.used) {
       return {
         ok: false,
-        error: "replay",
+        error:
+          "replay",
         status: 400,
       };
     }
@@ -599,7 +782,8 @@ function createPasswordAuthService({
     ) {
       return {
         ok: false,
-        error: "expired",
+        error:
+          "expired",
         status: 400,
       };
     }
@@ -607,7 +791,9 @@ function createPasswordAuthService({
     if (
       entry.codeHash !==
       sha256(
-        String(code).trim(),
+        String(
+          code,
+        ).trim(),
       )
     ) {
       return {
@@ -618,7 +804,8 @@ function createPasswordAuthService({
       };
     }
 
-    entry.used = true;
+    entry.used =
+      true;
 
     const user =
       findUser(
@@ -649,18 +836,24 @@ function createPasswordAuthService({
 
     rememberDevice({
       user,
+
       deviceId,
     });
 
     persist();
 
+    await syncUserToSupabase(
+      user,
+    );
+
     return issueSession({
       user,
+
       deviceId,
     });
   }
 
-  function authenticateProvider({
+  async function authenticateProvider({
     provider,
     subject,
     email,
@@ -668,13 +861,17 @@ function createPasswordAuthService({
     deviceId,
   }) {
     const normalized =
-      normalizeEmail(email);
+      normalizeEmail(
+        email,
+      );
 
     if (
       ![
         "google",
         "microsoft",
-      ].includes(provider)
+      ].includes(
+        provider,
+      )
     ) {
       return {
         ok: false,
@@ -707,7 +904,9 @@ function createPasswordAuthService({
             candidate.identities,
           )
             ? candidate.identities.some(
-                (identity) =>
+                (
+                  identity,
+                ) =>
                   identity.provider ===
                     provider &&
                   identity.subject ===
@@ -733,7 +932,8 @@ function createPasswordAuthService({
         emailVerified:
           true,
 
-        identities: [],
+        identities:
+          [],
 
         createdAt:
           now(),
@@ -756,7 +956,9 @@ function createPasswordAuthService({
 
     if (
       !user.identities.some(
-        (identity) =>
+        (
+          identity,
+        ) =>
           identity.provider ===
             provider &&
           identity.subject ===
@@ -766,7 +968,8 @@ function createPasswordAuthService({
       user.identities.push({
         provider,
         subject,
-        linkedAt: now(),
+        linkedAt:
+          now(),
       });
     }
 
@@ -782,8 +985,13 @@ function createPasswordAuthService({
 
     persist();
 
+    await syncUserToSupabase(
+      user,
+    );
+
     return issueSession({
       user,
+
       deviceId,
     });
   }
@@ -793,18 +1001,22 @@ function createPasswordAuthService({
     deviceId,
   }) {
     const accessToken =
-      crypto.randomBytes(
-        24,
-      ).toString(
-        "base64url",
-      );
+      crypto
+        .randomBytes(
+          24,
+        )
+        .toString(
+          "base64url",
+        );
 
     const refreshToken =
-      crypto.randomBytes(
-        32,
-      ).toString(
-        "base64url",
-      );
+      crypto
+        .randomBytes(
+          32,
+        )
+        .toString(
+          "base64url",
+        );
 
     const refreshHash =
       sha256(
@@ -847,16 +1059,23 @@ function createPasswordAuthService({
 
     return {
       ok: true,
+
       accessToken,
+
       refreshToken,
+
       accessExpiresInMs:
         ACCESS_TTL_MS,
+
       refreshExpiresInMs:
         REFRESH_TTL_MS,
+
       userId:
         user.userId,
+
       email:
         user.email,
+
       emailVerified:
         true,
     };
@@ -883,10 +1102,13 @@ function createPasswordAuthService({
     ] = {
       userId:
         user.userId,
+
       email:
         user.email,
+
       rememberedAt:
         now(),
+
       expiresAt:
         now() +
         REFRESH_TTL_MS,
@@ -914,7 +1136,8 @@ function createPasswordAuthService({
     }
 
     const remembered =
-      state.rememberedDevices[
+      state
+        .rememberedDevices[
         id
       ];
 
@@ -973,15 +1196,18 @@ function createPasswordAuthService({
       );
 
     if (
-      retiredRefresh.has(h)
+      retiredRefresh.has(
+        h,
+      )
     ) {
-      const prior = [
-        ...sessions.values(),
-      ].find(
-        (s) =>
-          s.deviceId ===
-          deviceId,
-      );
+      const prior =
+        [
+          ...sessions.values(),
+        ].find(
+          (s) =>
+            s.deviceId ===
+            deviceId,
+        );
 
       if (prior) {
         logoutAll(
@@ -998,7 +1224,9 @@ function createPasswordAuthService({
     }
 
     const session =
-      refreshByHash.get(h);
+      refreshByHash.get(
+        h,
+      );
 
     if (!session) {
       return {
@@ -1044,7 +1272,9 @@ function createPasswordAuthService({
       };
     }
 
-    retiredRefresh.add(h);
+    retiredRefresh.add(
+      h,
+    );
 
     refreshByHash.delete(
       h,
@@ -1072,6 +1302,7 @@ function createPasswordAuthService({
 
     return issueSession({
       user,
+
       deviceId,
     });
   }
@@ -1110,10 +1341,13 @@ function createPasswordAuthService({
 
     return {
       ok: true,
+
       userId:
         session.userId,
+
       email:
         session.email,
+
       deviceId:
         session.deviceId,
     };
@@ -1155,12 +1389,15 @@ function createPasswordAuthService({
       (u) => ({
         userId:
           u.userId,
+
         email:
           u.email,
+
         emailVerified:
           Boolean(
             u.emailVerified,
           ),
+
         createdAt:
           u.createdAt,
       }),
@@ -1201,11 +1438,15 @@ function createPasswordAuthService({
 
     return {
       ok: true,
+
       claimed: true,
+
       claimedAt:
         claim.claimedAt,
+
       email:
         claim.email,
+
       userId:
         claim.userId,
     };
@@ -1244,22 +1485,30 @@ function createPasswordAuthService({
         error:
           "device-trial-used",
         status: 409,
+
         claimed: true,
+
         claimedAt:
           existing.claimedAt,
+
         email:
           existing.email,
       };
     }
 
     const normalized =
-      normalizeEmail(email);
+      normalizeEmail(
+        email,
+      );
 
     const claim = {
-      deviceId: id,
+      deviceId:
+        id,
 
       email:
-        isEmail(normalized)
+        isEmail(
+          normalized,
+        )
           ? normalized
           : "",
 
@@ -1281,9 +1530,12 @@ function createPasswordAuthService({
 
     return {
       ok: true,
+
       claimed: true,
+
       claimedAt:
         claim.claimedAt,
+
       email:
         claim.email,
     };
@@ -1345,7 +1597,9 @@ function hashPassword(
   const salt =
     crypto.randomBytes(
       16,
-    ).toString("hex");
+    ).toString(
+      "hex",
+    );
 
   const derived =
     crypto
@@ -1354,7 +1608,9 @@ function hashPassword(
         salt,
         32,
       )
-      .toString("hex");
+      .toString(
+        "hex",
+      );
 
   return `scrypt$${salt}$${derived}`;
 }
@@ -1364,12 +1620,14 @@ function verifyPassword(
   stored,
 ) {
   const parts =
-    String(stored || "")
-      .split("$");
+    String(
+      stored || "",
+    ).split("$");
 
   if (
     parts.length !== 3 ||
-    parts[0] !== "scrypt"
+    parts[0] !==
+      "scrypt"
   ) {
     return false;
   }
@@ -1387,7 +1645,9 @@ function verifyPassword(
         salt,
         32,
       )
-      .toString("hex");
+      .toString(
+        "hex",
+      );
 
   try {
     return crypto.timingSafeEqual(
@@ -1429,7 +1689,9 @@ function validatePassword(
       ),
 
     number:
-      /\d/.test(value),
+      /\d/.test(
+        value,
+      ),
 
     symbol:
       /[^A-Za-z0-9\s]/.test(
@@ -1437,14 +1699,18 @@ function validatePassword(
       ),
 
     noWhitespace:
-      !/\s/.test(value),
+      !/\s/.test(
+        value,
+      ),
   };
 
   return {
     ok:
       Object.values(
         rules,
-      ).every(Boolean),
+      ).every(
+        Boolean,
+      ),
 
     failedRules:
       Object.entries(
@@ -1455,7 +1721,8 @@ function validatePassword(
             !passed,
         )
         .map(
-          ([name]) => name,
+          ([name]) =>
+            name,
         ),
   };
 }
@@ -1471,8 +1738,11 @@ function loadStore(
     ) {
       return {
         version: 1,
+
         users: [],
+
         deviceTrials: {},
+
         rememberedDevices: {},
       };
     }
@@ -1518,8 +1788,11 @@ function loadStore(
   } catch {
     return {
       version: 1,
+
       users: [],
+
       deviceTrials: {},
+
       rememberedDevices: {},
     };
   }
@@ -1549,6 +1822,7 @@ function saveStore(
     JSON.stringify(
       {
         version: 1,
+
         users:
           state.users,
 
