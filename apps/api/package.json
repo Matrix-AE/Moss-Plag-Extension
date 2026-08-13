@@ -43,8 +43,10 @@
     "start:mock": "node server.js"
   },
   "dependencies": {
-    "@moss/domain": "0.0.0",
     "@moss/contracts": "0.0.0",
-    "@moss/provider-adapter": "0.0.0"
+    "@moss/domain": "0.0.0",
+    "@moss/provider-adapter": "0.0.0",
+    "@supabase/server": "^1.4.1",
+    "@supabase/supabase-js": "^2.112.3"
   }
 }
