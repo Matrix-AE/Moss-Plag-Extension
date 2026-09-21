@@ -78,6 +78,7 @@ function createEntitlementService({
     DEFAULT_TOKEN_TTL_MS,
   offlineGraceMs = 0,
   storePath = null,
+  onPurchase = null,
 } = {}) {
   if (
     !webhookSecret ||
@@ -673,6 +674,29 @@ function createEntitlementService({
       paymentReference,
     });
 
+    /*
+     * Best-effort: generate + email the customer's PDF invoice on success.
+     * A PDF/email failure must NEVER change the purchase result (that would
+     * cause provider retries or a failed-looking grant), so swallow errors.
+     */
+    if (onPurchase) {
+      try {
+        await onPurchase({
+          event,
+          record,
+          selectedOffer,
+          paymentReference,
+          purchasedAt,
+        });
+      } catch (error) {
+        console.error(
+          "[entitlements] onPurchase (invoice) hook failed",
+          error?.message ||
+            String(error),
+        );
+      }
+    }
+
     return {
       ok: true,
 
@@ -930,6 +954,7 @@ function createEntitlementService({
     userId,
     sessionId,
     planId,
+    email,
   }) {
     if (!userId) {
       return {
@@ -979,6 +1004,8 @@ function createEntitlementService({
         "checkout.session.completed",
 
       userId,
+
+      email,
 
       planId:
         selectedOffer.id,

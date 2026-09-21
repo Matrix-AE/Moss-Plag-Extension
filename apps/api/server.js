@@ -68,6 +68,14 @@ const {
   createAdminDashboardService,
 } = require("./admin/dashboard");
 
+const {
+  createInvoiceService,
+} = require("./invoice/invoice-service");
+
+const {
+  findUserById,
+} = require("./db/users");
+
 const DEFAULT_PORT = 8787;
 const DEFAULT_HOST = "127.0.0.1";
 
@@ -199,6 +207,15 @@ function createServer(
         : "development-only-entitlement-secret-rotate-me"
     );
 
+  const invoice =
+    options.invoice ||
+    createInvoiceService({
+      findUserById,
+
+      supportEmail:
+        env.PUBLIC_SUPPORT_EMAIL,
+    });
+
   const entitlements =
     options.entitlements ||
     createEntitlementService({
@@ -207,6 +224,13 @@ function createServer(
 
       storePath:
         env.ENTITLEMENT_STORE_PATH,
+
+      /*
+       * On a successful, non-duplicate purchase, generate a PDF invoice
+       * and email it to the customer (best-effort; never blocks the grant).
+       */
+      onPurchase:
+        invoice.sendForPurchase,
     });
 
   /*
@@ -266,6 +290,7 @@ function createServer(
               entitlements,
               checkout,
               adminDashboard,
+              invoice,
             },
           );
         } catch (error) {
@@ -822,6 +847,9 @@ async function handleRequest(
       await ctx.entitlements.completeMockPurchase({
         userId:
           authed.userId,
+
+        email:
+          authed.email,
 
         sessionId,
 

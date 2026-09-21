@@ -12,6 +12,7 @@ async function sendResendEmail({
   subject,
   text,
   html,
+  attachments,
 } = {}) {
   if (!apiKey || apiKey === "re_your_new_rotated_key" || apiKey.length < 20) {
     return { ok: false, error: "resend-key-missing-or-placeholder" };
@@ -31,6 +32,8 @@ async function sendResendEmail({
       subject,
       text,
       html: html || undefined,
+      // Resend supports { filename, content: <base64> } (or { filename, path } for a URL).
+      attachments: attachments && attachments.length ? attachments : undefined,
     }),
   });
 
