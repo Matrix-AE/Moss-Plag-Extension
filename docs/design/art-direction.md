@@ -54,34 +54,34 @@ light is not a degraded afterthought and carries identical semantics.
 | Role | Hex | Use |
 | --- | --- | --- |
 | surface | `#ffffff` | Page and card background |
-| surfaceMuted | `#f2f4f8` | Recessed rows, code rails |
-| border | `#d3d8e0` | Hairline separation |
-| text | `#14161a` | Body copy |
-| textMuted | `#525a66` | Helper text, timestamps |
-| accent | `#2f4fd8` | One primary action per view |
+| surfaceMuted | `#edf3fa` | Recessed rows, code rails |
+| border | `#c7d4e4` | Hairline separation |
+| text | `#0f172a` | Body copy |
+| textMuted | `#526176` | Helper text, timestamps |
+| accent | `#6654dc` | One primary action per view |
 | accentText | `#ffffff` | Label on accent fill |
-| focus | `#0b47c7` | Focus ring |
-| info | `#1f5a8f` | Progress and neutral state |
-| caution | `#7a4a05` | Needs a decision before continuing |
-| danger | `#96231f` | Blocked or failed |
-| success | `#1c5f3a` | Workflow finished |
+| focus | `#5141bb` | Focus ring |
+| info | `#5b4cc4` | Progress and neutral state |
+| caution | `#81570f` | Needs a decision before continuing |
+| danger | `#a3312c` | Blocked or failed |
+| success | `#1f6a50` | Workflow finished |
 
 ### Dark
 
 | Role | Hex | Use |
 | --- | --- | --- |
-| surface | `#15171c` | Page and card background |
-| surfaceMuted | `#1e2128` | Recessed rows, code rails |
-| border | `#333945` | Hairline separation |
-| text | `#f1f3f6` | Body copy |
-| textMuted | `#aab2be` | Helper text, timestamps |
-| accent | `#9db6ff` | One primary action per view |
-| accentText | `#10131c` | Label on accent fill |
-| focus | `#b9ccff` | Focus ring |
-| info | `#96c4ee` | Progress and neutral state |
-| caution | `#e7b169` | Needs a decision before continuing |
-| danger | `#f2a09a` | Blocked or failed |
-| success | `#89d6a8` | Workflow finished |
+| surface | `#0b1220` | Page and card background |
+| surfaceMuted | `#111c2e` | Recessed rows, code rails |
+| border | `#25324a` | Hairline separation |
+| text | `#f5f7fb` | Body copy |
+| textMuted | `#a7b2c3` | Helper text, timestamps |
+| accent | `#b7adff` | One primary action per view |
+| accentText | `#07111f` | Label on accent fill |
+| focus | `#d1caff` | Focus ring |
+| info | `#c2baff` | Progress and neutral state |
+| caution | `#e8b86d` | Needs a decision before continuing |
+| danger | `#f0a29c` | Blocked or failed |
+| success | `#8bd8b1` | Workflow finished |
 
 ### Contrast Targets
 

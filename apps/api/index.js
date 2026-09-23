@@ -25,4 +25,5 @@ module.exports = {
   consentCopy: require("./legal/consent-copy"),
   entitlements: require("./commerce/entitlements"),
   checkout: require("./commerce/checkout"),
+  adminDashboard: require("./admin/dashboard"),
 };

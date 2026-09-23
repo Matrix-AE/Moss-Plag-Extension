@@ -22,6 +22,8 @@
     "prelint": "node scripts/check-node-version.js",
     "lint": "node scripts/check-workspaces.js && node scripts/check-boundaries.js",
     "typecheck:extension": "npm run typecheck --workspace @moss/extension",
+    "typecheck:admin": "npm run typecheck --workspace @moss/admin",
+    "build:admin": "npm run build --workspace @moss/admin",
     "prebuild": "node scripts/check-node-version.js",
     "build": "tsc -b --pretty false && npm run build:extension",
     "build:extension": "npm run build --workspace @moss/extension",

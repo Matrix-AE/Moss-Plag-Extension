@@ -257,7 +257,7 @@ export async function saveDemoAccount(
 }
 
 export async function clearDemoAccount(): Promise<void> {
-  await browser.storage.local.remove([ACCOUNT_KEY, ENTITLEMENT_KEY, MOSS_CRED_KEY, RELEASED_RUNS_KEY]);
+  await browser.storage.local.remove(ACCOUNT_KEY);
 }
 
 /**
@@ -324,6 +324,15 @@ export async function purchaseDemoEntitlement(
   const resolved = await resolveOwner(owner);
   if (!resolved.ok) throw new Error(resolved.error);
   const plan = PLANS[planId] || PLANS.pair;
+  const current = await loadDemoEntitlement();
+  if (
+    current &&
+    current.ownerUserId === resolved.userId &&
+    current.planId === plan.id &&
+    current.total === plan.runs
+  ) {
+    return current;
+  }
   const entitlement: DemoEntitlement = {
     remaining: plan.runs,
     total: plan.runs,
@@ -334,6 +343,50 @@ export async function purchaseDemoEntitlement(
     allowsDirectory: plan.allowsDirectory,
     ownerUserId: resolved.userId,
     ownerEmail: resolved.email,
+  };
+  await browser.storage.local.set({ [ENTITLEMENT_KEY]: entitlement });
+  return entitlement;
+}
+
+/**
+ * Map a server entitlement (from GET /v1/entitlement, granted by a real Safepay
+ * purchase) into the local entitlement the UI reads, and persist it. The server
+ * is the source of truth; this mirrors it locally for the existing run flow.
+ */
+export type ServerEntitlement = {
+  planId?: string;
+  status?: string;
+  remaining?: number;
+  total?: number;
+  maxFilesPerRun?: number;
+  purchasedAt?: number;
+};
+
+export async function applyServerEntitlement(
+  server: ServerEntitlement | null | undefined,
+  owner: { userId: string; email: string },
+): Promise<DemoEntitlement | null> {
+  if (
+    !server ||
+    server.status !== "active" ||
+    typeof server.remaining !== "number" ||
+    server.remaining <= 0
+  ) {
+    return null;
+  }
+  const planId = normalizePlanId(server.planId);
+  const plan = PLANS[planId];
+  const entitlement: DemoEntitlement = {
+    remaining: server.remaining,
+    total: typeof server.total === "number" ? server.total : plan.runs,
+    maxFilesPerRun:
+      typeof server.maxFilesPerRun === "number" ? server.maxFilesPerRun : plan.maxFilesPerRun,
+    purchasedAt: typeof server.purchasedAt === "number" ? server.purchasedAt : Date.now(),
+    planId,
+    mode: plan.mode,
+    allowsDirectory: plan.allowsDirectory,
+    ownerUserId: String(owner.userId || ""),
+    ownerEmail: String(owner.email || "").trim().toLowerCase(),
   };
   await browser.storage.local.set({ [ENTITLEMENT_KEY]: entitlement });
   return entitlement;

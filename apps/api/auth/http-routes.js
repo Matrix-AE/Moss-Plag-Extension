@@ -60,6 +60,7 @@ function createAuthRouter(auth, oauth = null) {
         const result = await auth.login({
           email: body.email,
           password: body.password,
+          deviceId: body.deviceId,
         });
         writeJson(res, result.ok ? 200 : result.status || 400, result);
         return true;
@@ -74,7 +75,7 @@ function createAuthRouter(auth, oauth = null) {
 
       if (method === "POST" && path === "/v1/auth/reset-password") {
         const body = await readJson(req);
-        const result = auth.resetPassword({
+        const result = await auth.resetPassword({
           nonce: body.nonce,
           code: body.code,
           newPassword: body.newPassword,
@@ -116,12 +117,19 @@ function createAuthRouter(auth, oauth = null) {
 
       if (method === "POST" && path === "/v1/auth/verify-otp") {
         const body = await readJson(req);
-        const result = auth.verifyOtp({
+
+        const result = await auth.verifyOtp({
           nonce: body.nonce,
           code: body.code,
           deviceId: body.deviceId,
         });
-        writeJson(res, result.ok ? 200 : result.status || 400, result);
+
+        writeJson(
+          res,
+          result.ok ? 200 : result.status || 400,
+          result,
+        );
+
         return true;
       }
 

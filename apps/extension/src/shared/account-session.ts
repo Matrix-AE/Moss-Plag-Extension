@@ -121,11 +121,22 @@ export async function registerAccount(email: string, password: string) {
 
 /** Sign in with password → OTP emailed. */
 export async function loginAccount(email: string, password: string) {
+  const deviceId = await ensureDeviceId();
   const result = await authFetch("/v1/auth/login", {
-    body: { email, password },
+    body: { email, password, deviceId },
   });
   if (!result.ok) {
     return { ok: false as const, error: mapAuthError(result.data, "Could not sign in.") };
+  }
+  const session = sessionFromData(result.data, email);
+  if (session) {
+    await saveAuthSession(session);
+    return {
+      ok: true as const,
+      session,
+      email: session.email,
+      message: "Signed in on this trusted laptop.",
+    };
   }
   return {
     ok: true as const,
@@ -268,12 +279,6 @@ export async function refreshAuthSession(): Promise<AuthSession | null> {
 }
 
 export async function logoutAccount(): Promise<void> {
-  const current = await loadAuthSession();
-  if (current?.accessToken) {
-    await authFetch("/v1/auth/logout", {
-      accessToken: current.accessToken,
-    });
-  }
   await clearAuthSession();
 }
 

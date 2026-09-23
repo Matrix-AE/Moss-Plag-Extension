@@ -34,16 +34,23 @@
     "./commerce/entitlements": "./commerce/entitlements.js",
     "./commerce/checkout": "./commerce/checkout.js",
     "./live/pair-service": "./live/pair-service.js",
-    "./server": "./server.js"
+    "./server": "./server.js",
+    "./admin/dashboard": "./admin/dashboard.js",
+    "./invoice": "./invoice/invoice-service.js",
+    "./invoice/generate": "./invoice/generate-invoice.js"
   },
   "scripts": {
     "start": "node server.js",
     "start:live": "node start-live.js",
-    "start:mock": "node server.js"
+    "start:mock": "node server.js",
+    "smoke:invoice": "node scripts/smoke-invoice.js"
   },
   "dependencies": {
-    "@moss/domain": "0.0.0",
     "@moss/contracts": "0.0.0",
-    "@moss/provider-adapter": "0.0.0"
+    "@moss/domain": "0.0.0",
+    "@moss/provider-adapter": "0.0.0",
+    "@supabase/server": "^1.4.1",
+    "@supabase/supabase-js": "^2.112.3",
+    "pdfkit": "^0.20.2"
   }
 }

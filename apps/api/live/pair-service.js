@@ -62,6 +62,7 @@ function createPairService({
       reportUrlRef: null,
       failureCode: null,
       failureMessage: null,
+      providerStage: "created",
       submitted: false,
       createdAt: now(),
       updatedAt: now(),
@@ -170,6 +171,7 @@ function createPairService({
   async function runSubmission(row) {
     row.status = "submitting";
     row.phase = "submit";
+    row.providerStage = "starting";
     row.updatedAt = now();
 
     const lease = {
@@ -194,6 +196,7 @@ function createPairService({
 
     row.status = "waiting";
     row.phase = "wait";
+    row.providerStage = "waiting-for-provider";
     row.submitted = true;
     row.updatedAt = now();
 
@@ -211,6 +214,12 @@ function createPairService({
         })),
         settings: row.settings,
         comment: row.settings.reportLabel,
+        onStage: (stage) => {
+          row.providerStage = String(stage).slice(0, 64);
+          row.updatedAt = now();
+          // Deliberately exclude credentials, source names, and report URLs.
+          console.log(`[moss-pair-api] job=${row.jobId} provider-stage=${row.providerStage}`);
+        },
       });
     } catch (error) {
       outcome = {
@@ -235,6 +244,7 @@ function createPairService({
       row.phase = row.status === "ambiguous" ? "timeout" : "failure";
       row.failureCode = outcome.code || "generic-failure";
       row.failureMessage = outcome.message || "Submission failed.";
+      row.providerStage = `failed-${String(outcome.phase || outcome.code || "unknown").slice(0, 48)}`;
       row.updatedAt = now();
       return;
     }
@@ -259,6 +269,7 @@ function createPairService({
 
     row.status = "succeeded";
     row.phase = "success";
+    row.providerStage = "completed";
     row.reportUrlRef = `ref_${row.jobId}`;
     row.availabilityEstimate = saved.estimate;
     row.updatedAt = now();
@@ -317,6 +328,7 @@ function createPairService({
       reportUrlRef: row.reportUrlRef,
       failureCode: row.failureCode,
       failureMessage: row.failureMessage,
+      providerStage: row.providerStage,
       submitted: row.submitted,
       fileCount: Array.isArray(row.files) ? row.files.length : 0,
       hasCredential: Boolean(row.credentialId),

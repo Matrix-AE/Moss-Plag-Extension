@@ -1,10 +1,23 @@
 {
   "files": [],
   "references": [
-    { "path": "./packages/domain" },
-    { "path": "./packages/contracts" },
-    { "path": "./packages/config" },
-    { "path": "./packages/ui" },
-    { "path": "./packages/provider-adapter" }
+    {
+      "path": "./apps/admin"
+    },
+    {
+      "path": "./packages/domain"
+    },
+    {
+      "path": "./packages/contracts"
+    },
+    {
+      "path": "./packages/config"
+    },
+    {
+      "path": "./packages/ui"
+    },
+    {
+      "path": "./packages/provider-adapter"
+    }
   ]
 }

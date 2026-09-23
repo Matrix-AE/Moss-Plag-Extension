@@ -20,6 +20,7 @@ import {
   OFFER,
   PLAN_LIST,
   PLANS,
+  applyServerEntitlement,
   claimDeviceTrial,
   clearDemoAccount,
   clearDemoMossCredential,
@@ -39,6 +40,7 @@ import {
   type DemoMossCredential,
   type DeviceTrialStatus,
   type PlanId,
+  type ServerEntitlement,
 } from "../entitlement-demo";
 import {
   clearAuthSession,
@@ -310,8 +312,8 @@ export function WorkflowApp({ surface = "popup" }: { surface?: Surface } = {}) {
       return {
         ok: true,
         canProceed: false,
-        errors: [] as Array<{ code: string; message: string }>,
-        warnings: [] as Array<{ code: string; message: string }>,
+        errors: [] as Array<{ code: string; message: string; blocking?: boolean }>,
+        warnings: [] as Array<{ code: string; message: string; blocking?: boolean }>,
       };
     }
     return preflight.runPreflight(draftSnapshot, { limits: preflight.DEFAULT_LIMITS });
@@ -394,6 +396,21 @@ export function WorkflowApp({ surface = "popup" }: { surface?: Surface } = {}) {
       });
       nextEntitlement = synced.entitlement;
       nextMoss = synced.moss;
+      // Server entitlement is the source of truth once the API is reachable.
+      try {
+        const serverRes = await apiClient.getServerEntitlement({
+          ownerUserId: nextAccount.userId,
+        });
+        if (serverRes.ok && serverRes.data) {
+          const applied = await applyServerEntitlement(
+            serverRes.data.entitlement as ServerEntitlement,
+            { userId: nextAccount.userId, email: nextAccount.email },
+          );
+          if (applied) nextEntitlement = applied;
+        }
+      } catch {
+        /* offline / unpacked build — keep the local mirror */
+      }
     } else {
       nextEntitlement = await loadDemoEntitlement();
       nextMoss = await loadDemoMossCredential();
@@ -441,7 +458,7 @@ export function WorkflowApp({ surface = "popup" }: { surface?: Surface } = {}) {
         now: Date.now(),
         mode: isLiveJob ? "live" : "demo",
       };
-      if (isLiveJob) recoverOpts.deadlineMs = 180_000;
+      if (isLiveJob) recoverOpts.deadlineMs = 600_000;
       const recovered = runLifecycle.recoverRunState(next.activeJob, recoverOpts);
       if (recovered.ok && recovered.state) {
         setRun(recovered.state);
@@ -494,7 +511,8 @@ export function WorkflowApp({ surface = "popup" }: { surface?: Surface } = {}) {
   const pollLiveRun = useCallback(async () => {
     if (pollInFlightRef.current) return;
     const current = run;
-    if (!current || current.mode !== "live" || !current.jobId || !account?.email) return;
+    const ownerUserId = account?.userId || account?.email;
+    if (!current || current.mode !== "live" || !current.jobId || !ownerUserId) return;
     if (runLifecycle.isTerminalPhase(current.phase)) return;
 
     const now = Date.now();
@@ -519,7 +537,7 @@ export function WorkflowApp({ surface = "popup" }: { surface?: Surface } = {}) {
     pollInFlightRef.current = true;
     try {
       const status = await apiClient.getJobStatus({
-        ownerUserId: account.email,
+        ownerUserId,
         jobId: current.jobId,
       });
       if (!status.ok) {
@@ -532,10 +550,24 @@ export function WorkflowApp({ surface = "popup" }: { surface?: Surface } = {}) {
             reportUrlRef?: string;
             failureCode?: string;
             submitted?: boolean;
+            providerStage?: string;
           }
         | undefined;
       const nextPhase = apiClient.phaseFromJobStatus(job?.status);
       if (!nextPhase) return;
+
+      if (job?.providerStage) {
+        const stageLabels: Record<string, string> = {
+          connecting: "Connecting to MOSS…",
+          authenticated: "MOSS connection authenticated…",
+          "language-accepted": "MOSS accepted the selected language…",
+          "query-sent": "MOSS accepted the query…",
+          "awaiting-report": "MOSS is generating the report…",
+          "report-received": "MOSS report received…",
+        };
+        const stage = String(job.providerStage);
+        setGateMessage(stageLabels[stage] || (stage.startsWith("uploaded-") ? "Files uploaded; submitting to MOSS…" : `MOSS status: ${stage}`));
+      }
 
       setRun((prev) => {
         if (!prev || prev.mode !== "live" || prev.jobId !== current.jobId) return prev;
@@ -552,7 +584,7 @@ export function WorkflowApp({ surface = "popup" }: { surface?: Surface } = {}) {
 
       if (nextPhase === "success" && job?.reportUrlRef) {
         const revealed = await apiClient.revealJobResult({
-          ownerUserId: account.email,
+          ownerUserId,
           jobId: current.jobId,
         });
         if (revealed.ok && typeof revealed.data["reportUrl"] === "string") {
@@ -562,7 +594,7 @@ export function WorkflowApp({ surface = "popup" }: { surface?: Surface } = {}) {
     } finally {
       pollInFlightRef.current = false;
     }
-  }, [run, account?.email]);
+  }, [run, account?.userId, account?.email]);
 
   // Drive the run forward: demo ticks locally; live polls the loopback API. Deadline always wins.
   useEffect(() => {
@@ -722,6 +754,29 @@ export function WorkflowApp({ surface = "popup" }: { surface?: Surface } = {}) {
       setAuthError(started.error);
       return;
     }
+    if ("session" in started) {
+      const nextAccount = sessionToAccount(started.session);
+      setAccount(nextAccount);
+      setPassword("");
+      setConfirmPassword("");
+      setMossRegEmail(started.session.email);
+      const synced = await syncLocalStateForAccount({
+        userId: started.session.userId,
+        email: started.session.email,
+      });
+      const trialStatus = await loadDeviceTrialStatus();
+      setDeviceTrial(trialStatus);
+      setEntitlement(synced.entitlement);
+      setMossCredential(synced.moss);
+      if (synced.moss?.display) setProviderIdMasked(synced.moss.display);
+      resolveGate(nextAccount, synced.entitlement, synced.moss);
+      setGateMessage(
+        synced.entitlement && isEntitled(synced.entitlement)
+          ? "Welcome back. Continue where you left off."
+          : `Choose a plan to continue - Free demo (1 check on this PC), Pair ($${PLANS.pair.priceUsd}), or Batch ($${PLANS.batch.priceUsd}).`,
+      );
+      return;
+    }
     setOtpNonce(started.nonce);
     setOtpPendingEmail(started.email);
     setAuthStep("otp");
@@ -832,11 +887,79 @@ export function WorkflowApp({ surface = "popup" }: { surface?: Surface } = {}) {
     );
   };
 
+  const refreshServerEntitlement = async (): Promise<boolean> => {
+    if (!account?.userId) return false;
+    try {
+      const res = await apiClient.getServerEntitlement({ ownerUserId: account.userId });
+      if (res.ok && res.data) {
+        const applied = await applyServerEntitlement(
+          res.data.entitlement as ServerEntitlement,
+          { userId: account.userId, email: account.email },
+        );
+        if (applied) {
+          setEntitlement(applied);
+          // Advance the onboarding gate too: the paywall is rendered on `gate`,
+          // a separate state var, so without this a granted entitlement would
+          // flip but the UI would stay stuck on the paywall (with live buttons).
+          resolveGate(account, applied, mossCredential);
+          return true;
+        }
+      }
+    } catch {
+      /* ignore transient errors */
+    }
+    return false;
+  };
+
+  // After opening the hosted checkout, poll the server until the webhook grants
+  // the entitlement, then reflect it here (~3 min at 5s intervals).
+  const startEntitlementPolling = () => {
+    let attempts = 0;
+    const tick = async () => {
+      attempts += 1;
+      const unlocked = await refreshServerEntitlement();
+      if (unlocked) return;
+      if (attempts < 36) {
+        window.setTimeout(() => {
+          void tick();
+        }, 5000);
+      }
+    };
+    window.setTimeout(() => {
+      void tick();
+    }, 5000);
+  };
+
   const onPurchase = async (planId: PlanId) => {
     if (planId === "trial") {
       await onClaimFreeTrial();
       return;
     }
+    // Real Safepay hosted checkout when signed in and the API is reachable.
+    if (account?.userId) {
+      const res = await apiClient.startSafepayCheckout({
+        ownerUserId: account.userId,
+        planId,
+      });
+      const checkoutUrl =
+        typeof res.data.checkoutUrl === "string" ? res.data.checkoutUrl : null;
+      if (res.ok && checkoutUrl) {
+        await browser.tabs.create({ url: checkoutUrl });
+        setGateMessage(
+          `Complete your payment in the tab that just opened, then reopen PairProof — your ${PLANS[planId].name} plan activates automatically once payment is confirmed.`,
+        );
+        startEntitlementPolling();
+        return;
+      }
+      const err = String(res.data.error || "");
+      // Only fall back to the local demo unlock when the hosted API/checkout is
+      // unavailable (unpacked/dev build); otherwise surface the error.
+      if (err !== "origin-forbidden" && err !== "network" && err !== "safepay-not-configured") {
+        setGateMessage("Could not start checkout. Please try again.");
+        return;
+      }
+    }
+    // Fallback: local demo unlock (unpacked/testing builds with no hosted API).
     try {
       const next = await purchaseDemoEntitlement(planId, {
         userId: account?.userId,
@@ -1239,7 +1362,7 @@ export function WorkflowApp({ surface = "popup" }: { surface?: Surface } = {}) {
         language: languageCode,
         comparison: comparisonMode,
         mode: "live",
-        deadlineMs: 180_000,
+        deadlineMs: 600_000,
       }),
     );
     setReportUrl("");
@@ -1434,8 +1557,9 @@ export function WorkflowApp({ surface = "popup" }: { surface?: Surface } = {}) {
     setLinkNote(
       "Link forgotten in this popup. This does not revoke browser history, clipboard copies, or the provider report.",
     );
-    if (run?.mode === "live" && run.jobId && account?.email) {
-      void apiClient.forgetJobResult({ ownerUserId: account.email, jobId: run.jobId });
+    const ownerUserId = account?.userId || account?.email;
+    if (run?.mode === "live" && run.jobId && ownerUserId) {
+      void apiClient.forgetJobResult({ ownerUserId, jobId: run.jobId });
     }
   };
 
@@ -1492,9 +1616,13 @@ export function WorkflowApp({ surface = "popup" }: { surface?: Surface } = {}) {
     );
   };
 
+  const filledGroupCount = groups.filter((group) => Array.isArray(group.files) && group.files.length > 0).length;
   const filesReady =
-    comparisonMode === "pair" ? sourceItems.length === maxFilesPerRun : sourceItems.length >= 2;
+    comparisonMode === "pair"
+      ? sourceItems.length === maxFilesPerRun && filledGroupCount === 2
+      : sourceItems.length >= 2 && filledGroupCount >= 2;
   const consentsReady = ownership && sensitiveLink;
+  const blockingPreflight = preflightResult.errors.find((error) => error.blocking);
   const warningsReady = preflightResult.warnings.length === 0 || warningsAck;
   const startBlocker = !mossConnected
     ? "Connect your Moss User ID first."
@@ -1503,9 +1631,13 @@ export function WorkflowApp({ surface = "popup" }: { surface?: Surface } = {}) {
       : !filesReady
         ? comparisonMode === "pair"
           ? `Choose ${maxFilesPerRun} files (${sourceItems.length} chosen).`
-          : `Choose at least 2 files (${sourceItems.length} chosen).`
+          : filledGroupCount < 2
+            ? `Batch needs at least 2 submissions (${filledGroupCount} ready).`
+            : `Choose at least 2 files (${sourceItems.length} chosen).`
         : !languageConfirmed
           ? "Choose the language of these files."
+          : blockingPreflight
+            ? `Resolve preflight block: ${blockingPreflight.message}`
           : !consentsReady
             ? "Tick both confirmations below."
             : !warningsReady
