@@ -1140,6 +1140,34 @@ async function handleRequest(
   }
 
   /*
+   * Read the signed-in owner's current entitlement (hydrated from Supabase so
+   * it survives a redeploy / different replica). The extension polls this after
+   * a Safepay purchase to reflect the unlocked plan.
+   */
+  if (
+    req.method === "GET" &&
+    path === "/v1/entitlement"
+  ) {
+    await ctx.entitlements.hydrateEntitlement(
+      ownerUserId,
+    );
+
+    writeJson(
+      res,
+      200,
+      {
+        ok: true,
+        entitlement:
+          ctx.entitlements.getEntitlement(
+            ownerUserId,
+          ),
+      },
+    );
+
+    return;
+  }
+
+  /*
    * Create job.
    */
   if (

@@ -348,6 +348,50 @@ export async function purchaseDemoEntitlement(
   return entitlement;
 }
 
+/**
+ * Map a server entitlement (from GET /v1/entitlement, granted by a real Safepay
+ * purchase) into the local entitlement the UI reads, and persist it. The server
+ * is the source of truth; this mirrors it locally for the existing run flow.
+ */
+export type ServerEntitlement = {
+  planId?: string;
+  status?: string;
+  remaining?: number;
+  total?: number;
+  maxFilesPerRun?: number;
+  purchasedAt?: number;
+};
+
+export async function applyServerEntitlement(
+  server: ServerEntitlement | null | undefined,
+  owner: { userId: string; email: string },
+): Promise<DemoEntitlement | null> {
+  if (
+    !server ||
+    server.status !== "active" ||
+    typeof server.remaining !== "number" ||
+    server.remaining <= 0
+  ) {
+    return null;
+  }
+  const planId = normalizePlanId(server.planId);
+  const plan = PLANS[planId];
+  const entitlement: DemoEntitlement = {
+    remaining: server.remaining,
+    total: typeof server.total === "number" ? server.total : plan.runs,
+    maxFilesPerRun:
+      typeof server.maxFilesPerRun === "number" ? server.maxFilesPerRun : plan.maxFilesPerRun,
+    purchasedAt: typeof server.purchasedAt === "number" ? server.purchasedAt : Date.now(),
+    planId,
+    mode: plan.mode,
+    allowsDirectory: plan.allowsDirectory,
+    ownerUserId: String(owner.userId || ""),
+    ownerEmail: String(owner.email || "").trim().toLowerCase(),
+  };
+  await browser.storage.local.set({ [ENTITLEMENT_KEY]: entitlement });
+  return entitlement;
+}
+
 export async function loadDeviceTrialStatus(): Promise<DeviceTrialStatus> {
   const deviceId = await ensureDeviceId();
   const local = await browser.storage.local.get(DEVICE_TRIAL_KEY);

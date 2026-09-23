@@ -20,6 +20,7 @@ import {
   OFFER,
   PLAN_LIST,
   PLANS,
+  applyServerEntitlement,
   claimDeviceTrial,
   clearDemoAccount,
   clearDemoMossCredential,
@@ -39,6 +40,7 @@ import {
   type DemoMossCredential,
   type DeviceTrialStatus,
   type PlanId,
+  type ServerEntitlement,
 } from "../entitlement-demo";
 import {
   clearAuthSession,
@@ -310,8 +312,8 @@ export function WorkflowApp({ surface = "popup" }: { surface?: Surface } = {}) {
       return {
         ok: true,
         canProceed: false,
-        errors: [] as Array<{ code: string; message: string }>,
-        warnings: [] as Array<{ code: string; message: string }>,
+        errors: [] as Array<{ code: string; message: string; blocking?: boolean }>,
+        warnings: [] as Array<{ code: string; message: string; blocking?: boolean }>,
       };
     }
     return preflight.runPreflight(draftSnapshot, { limits: preflight.DEFAULT_LIMITS });
@@ -394,6 +396,21 @@ export function WorkflowApp({ surface = "popup" }: { surface?: Surface } = {}) {
       });
       nextEntitlement = synced.entitlement;
       nextMoss = synced.moss;
+      // Server entitlement is the source of truth once the API is reachable.
+      try {
+        const serverRes = await apiClient.getServerEntitlement({
+          ownerUserId: nextAccount.userId,
+        });
+        if (serverRes.ok && serverRes.data) {
+          const applied = await applyServerEntitlement(
+            serverRes.data.entitlement as ServerEntitlement,
+            { userId: nextAccount.userId, email: nextAccount.email },
+          );
+          if (applied) nextEntitlement = applied;
+        }
+      } catch {
+        /* offline / unpacked build — keep the local mirror */
+      }
     } else {
       nextEntitlement = await loadDemoEntitlement();
       nextMoss = await loadDemoMossCredential();
@@ -870,11 +887,75 @@ export function WorkflowApp({ surface = "popup" }: { surface?: Surface } = {}) {
     );
   };
 
+  const refreshServerEntitlement = async (): Promise<boolean> => {
+    if (!account?.userId) return false;
+    try {
+      const res = await apiClient.getServerEntitlement({ ownerUserId: account.userId });
+      if (res.ok && res.data) {
+        const applied = await applyServerEntitlement(
+          res.data.entitlement as ServerEntitlement,
+          { userId: account.userId, email: account.email },
+        );
+        if (applied) {
+          setEntitlement(applied);
+          return true;
+        }
+      }
+    } catch {
+      /* ignore transient errors */
+    }
+    return false;
+  };
+
+  // After opening the hosted checkout, poll the server until the webhook grants
+  // the entitlement, then reflect it here (~3 min at 5s intervals).
+  const startEntitlementPolling = () => {
+    let attempts = 0;
+    const tick = async () => {
+      attempts += 1;
+      const unlocked = await refreshServerEntitlement();
+      if (unlocked) return;
+      if (attempts < 36) {
+        window.setTimeout(() => {
+          void tick();
+        }, 5000);
+      }
+    };
+    window.setTimeout(() => {
+      void tick();
+    }, 5000);
+  };
+
   const onPurchase = async (planId: PlanId) => {
     if (planId === "trial") {
       await onClaimFreeTrial();
       return;
     }
+    // Real Safepay hosted checkout when signed in and the API is reachable.
+    if (account?.userId) {
+      const res = await apiClient.startSafepayCheckout({
+        ownerUserId: account.userId,
+        planId,
+      });
+      const checkoutUrl =
+        typeof res.data.checkoutUrl === "string" ? res.data.checkoutUrl : null;
+      if (res.ok && checkoutUrl) {
+        await browser.tabs.create({ url: checkoutUrl });
+        setGateMessage(
+          `Complete your payment in the tab that just opened. Your ${PLANS[planId].name} plan unlocks here automatically once payment is confirmed.`,
+        );
+        startEntitlementPolling();
+        return;
+      }
+      const err = String(res.data.error || "");
+      // Only fall back to the local demo unlock when the hosted API/checkout is
+      // unavailable (unpacked/dev build); otherwise surface the error.
+      if (err !== "origin-forbidden" && err !== "network" && err !== "safepay-not-configured") {
+        setGateMessage("Could not start checkout. Please try again.");
+        return;
+      }
+    }
+    // Fallback: local demo unlock (unpacked/testing builds with no hosted API).
     try {
       const next = await purchaseDemoEntitlement(planId, {
         userId: account?.userId,

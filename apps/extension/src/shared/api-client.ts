@@ -93,6 +93,28 @@ export async function probeApi(origin = resolveApiOrigin()): Promise<{
 /** @deprecated Use probeApi */
 export const probeLocalApi = probeApi;
 
+/**
+ * Start a Safepay hosted-checkout session for a paid plan. Returns the
+ * hosted checkout URL for the caller to open in a new tab. The entitlement is
+ * granted server-side by the signed webhook (or the redirect poll), then read
+ * back via getServerEntitlement.
+ */
+export async function startSafepayCheckout(input: { ownerUserId: string; planId: string }) {
+  return apiFetch("/v1/checkout/safepay/start", {
+    method: "POST",
+    ownerUserId: input.ownerUserId,
+    body: { planId: input.planId },
+  });
+}
+
+/** Read the signed-in owner's current server entitlement (source of truth). */
+export async function getServerEntitlement(input: { ownerUserId: string }) {
+  return apiFetch("/v1/entitlement", {
+    method: "GET",
+    ownerUserId: input.ownerUserId,
+  });
+}
+
 export async function createPairJob(input: {
   ownerUserId: string;
   language: string;
