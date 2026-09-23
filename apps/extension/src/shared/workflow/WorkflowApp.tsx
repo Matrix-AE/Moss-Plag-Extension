@@ -898,6 +898,10 @@ export function WorkflowApp({ surface = "popup" }: { surface?: Surface } = {}) {
         );
         if (applied) {
           setEntitlement(applied);
+          // Advance the onboarding gate too: the paywall is rendered on `gate`,
+          // a separate state var, so without this a granted entitlement would
+          // flip but the UI would stay stuck on the paywall (with live buttons).
+          resolveGate(account, applied, mossCredential);
           return true;
         }
       }
@@ -942,7 +946,7 @@ export function WorkflowApp({ surface = "popup" }: { surface?: Surface } = {}) {
       if (res.ok && checkoutUrl) {
         await browser.tabs.create({ url: checkoutUrl });
         setGateMessage(
-          `Complete your payment in the tab that just opened. Your ${PLANS[planId].name} plan unlocks here automatically once payment is confirmed.`,
+          `Complete your payment in the tab that just opened, then reopen PairProof — your ${PLANS[planId].name} plan activates automatically once payment is confirmed.`,
         );
         startEntitlementPolling();
         return;
