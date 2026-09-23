@@ -76,6 +76,14 @@ const {
   findUserById,
 } = require("./db/users");
 
+const {
+  createSafepayGateway,
+} = require("./commerce/safepay-gateway");
+
+const {
+  createSafepayCheckoutService,
+} = require("./commerce/safepay-checkout");
+
 const DEFAULT_PORT = 8787;
 const DEFAULT_HOST = "127.0.0.1";
 
@@ -234,6 +242,33 @@ function createServer(
     });
 
   /*
+   * Safepay hosted-checkout gateway + orchestration.
+   * Falls back to disabled if SAFEPAY_* env is not configured.
+   */
+  const safepayGateway =
+    options.safepayGateway ||
+    createSafepayGateway({
+      environment:
+        env.SAFEPAY_ENVIRONMENT,
+      apiKey:
+        env.SAFEPAY_API_KEY,
+      secretKey:
+        env.SAFEPAY_SECRET_KEY,
+      webhookSecret:
+        env.SAFEPAY_WEBHOOK_SECRET,
+    });
+
+  const safepayCheckout =
+    options.safepayCheckout ||
+    createSafepayCheckoutService({
+      gateway:
+        safepayGateway,
+      entitlements,
+      publicBaseUrl:
+        env.PUBLIC_API_BASE_URL,
+    });
+
+  /*
    * Checkout return origins are configured server-side.
    *
    * Example:
@@ -291,6 +326,7 @@ function createServer(
               checkout,
               adminDashboard,
               invoice,
+              safepayCheckout,
             },
           );
         } catch (error) {
@@ -818,6 +854,11 @@ async function handleRequest(
     if (
       session.session.entitlementGranted
     ) {
+      // Rehydrate from Supabase if this replica/process hasn't cached it.
+      await ctx.entitlements.hydrateEntitlement(
+        authed.userId,
+      );
+
       const existing =
         ctx.entitlements.getEntitlement(
           authed.userId,
@@ -903,6 +944,93 @@ async function handleRequest(
       },
     );
 
+    return;
+  }
+
+  /*
+   * Safepay hosted checkout — create a session and return the checkout URL.
+   * Requires an authenticated shopper (bearer access token).
+   */
+  if (
+    req.method === "POST" &&
+    path === "/v1/checkout/safepay/start"
+  ) {
+    const token = bearer(req);
+    const authed =
+      token && ctx.auth
+        ? ctx.auth.authorize({ accessToken: token })
+        : { ok: false };
+
+    if (!authed.ok) {
+      writeJson(res, 401, { ok: false, error: "unauthorized" });
+      return;
+    }
+
+    const body = await readJson(req);
+    const result = await ctx.safepayCheckout.start({
+      userId: authed.userId,
+      email: authed.email,
+      planId: body.planId,
+    });
+
+    writeJson(res, result.ok ? 200 : result.status || 400, result);
+    return;
+  }
+
+  /*
+   * Safepay signed webhook (HMAC-SHA512, header X-SFPY-SIGNATURE).
+   * Authoritative payment confirmation -> grants entitlement + emails invoice.
+   */
+  if (
+    req.method === "POST" &&
+    path === "/v1/webhooks/safepay"
+  ) {
+    const signature = String(req.headers["x-sfpy-signature"] || "");
+    const rawBody = await readRaw(req);
+    const result = await ctx.safepayCheckout.handleWebhook({ rawBody, signature });
+    writeJson(res, result.status || (result.ok ? 200 : 400), result);
+    return;
+  }
+
+  /*
+   * Safepay redirect return — verify payment with Safepay and show the outcome.
+   * Unauthenticated (the shopper's browser lands here); the grant is idempotent
+   * and only proceeds when Safepay reports the tracker as ended.
+   */
+  if (
+    req.method === "GET" &&
+    path === "/v1/checkout/safepay/return"
+  ) {
+    const tracker = url.searchParams.get("tracker") || undefined;
+    const sessionId = url.searchParams.get("session") || undefined;
+    const result = await ctx.safepayCheckout.confirmReturn({ tracker, sessionId });
+    const paid = result.ok && result.paid;
+    const title = paid
+      ? "Payment successful"
+      : result.ok
+        ? "Payment pending"
+        : "Payment status unavailable";
+    const message = paid
+      ? `Your ${result.planName || "plan"} is now active. You can return to PairProof.`
+      : result.ok
+        ? "We haven't received confirmation yet. You can close this window — your access updates automatically once payment is confirmed."
+        : "We couldn't confirm this payment. If you were charged, contact support@matrix-ae.com.";
+    const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title></head><body style="font-family:Arial,Helvetica,sans-serif;background:#f1f5f9;margin:0"><div style="max-width:460px;margin:12vh auto;background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:32px;text-align:center"><div style="font-size:40px">${paid ? "&#9989;" : "&#9203;"}</div><h1 style="font-size:20px;color:#0f172a;margin:12px 0 8px">${title}</h1><p style="color:#475569;font-size:14px;line-height:1.5">${message}</p><p style="color:#94a3b8;font-size:12px;margin-top:20px">PairProof &middot; Matrix-AE</p></div></body></html>`;
+    res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" });
+    res.end(html);
+    return;
+  }
+
+  /*
+   * Safepay cancel return.
+   */
+  if (
+    req.method === "GET" &&
+    path === "/v1/checkout/safepay/cancel"
+  ) {
+    const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Checkout canceled</title></head><body style="font-family:Arial,Helvetica,sans-serif;background:#f1f5f9;margin:0"><div style="max-width:460px;margin:12vh auto;background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:32px;text-align:center"><div style="font-size:40px">&#8617;&#65039;</div><h1 style="font-size:20px;color:#0f172a;margin:12px 0 8px">Checkout canceled</h1><p style="color:#475569;font-size:14px">No charge was made. You can return to PairProof and try again.</p></div></body></html>`;
+    res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" });
+    res.end(html);
     return;
   }
 

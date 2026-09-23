@@ -29,6 +29,8 @@ const {
   getEntitlement:
     getSupabaseEntitlement,
   upsertEntitlement,
+  consumeRun:
+    consumeRunDb,
 } = require("../db/entitlements");
 
 const ENTITLEMENTS_VERSION = 3;
@@ -361,28 +363,67 @@ function createEntitlementService({
           )
         : null;
 
+    let created = false;
+
     if (!alreadyRecorded) {
-      subscription =
-        await createSubscription({
-          userId,
+      try {
+        subscription =
+          await createSubscription({
+            userId,
 
-          plan: planId,
+            plan: planId,
 
-          status,
+            status,
 
-          priceUsd,
+            priceUsd,
 
-          purchasedAt:
+            purchasedAt:
 
-            purchasedAt ||
-            new Date().toISOString(),
+              purchasedAt ||
+              new Date().toISOString(),
 
-          offerVersion,
+            offerVersion,
 
-          paymentProvider,
+            paymentProvider,
 
-          paymentReference,
-        });
+            paymentReference,
+          });
+
+        created = true;
+      } catch (error) {
+        /*
+         * A concurrent grant already inserted this payment_reference (the DB
+         * unique constraint fired). Treat it as already-recorded so we do not
+         * double-count revenue or double-send the invoice.
+         */
+        const code =
+          String(
+            (error && (error.code || error.details)) || "",
+          );
+
+        const dup =
+          code.includes("23505") ||
+          /duplicate key|already exists|unique/i.test(
+            String(error && error.message),
+          );
+
+        if (!dup) {
+          throw error;
+        }
+
+        const fresh =
+          await getUserSubscriptions(userId);
+
+        subscription =
+          fresh.find(
+            (item) =>
+              paymentReference &&
+              item.payment_reference ===
+                paymentReference,
+          ) || null;
+
+        created = false;
+      }
     }
 
     const entitlement =
@@ -407,6 +448,7 @@ function createEntitlementService({
     return {
       subscription,
       entitlement,
+      created,
     };
   }
 
@@ -679,7 +721,10 @@ function createEntitlementService({
      * A PDF/email failure must NEVER change the purchase result (that would
      * cause provider retries or a failed-looking grant), so swallow errors.
      */
-    if (onPurchase) {
+    if (
+      onPurchase &&
+      supabaseResult.created !== false
+    ) {
       try {
         await onPurchase({
           event,
@@ -1030,6 +1075,81 @@ function createEntitlementService({
     });
   }
 
+  /**
+   * Complete a purchase confirmed by a real payment provider (e.g. Safepay).
+   * The caller MUST have verified the provider's signed confirmation first
+   * (HMAC webhook) or polled the provider's authoritative status. Plan and
+   * price come from our server-owned catalog, never from provider input.
+   * Idempotent via applyPurchase's sessionId/paymentReference guards.
+   */
+  async function completeProviderPurchase({
+    userId,
+    sessionId,
+    planId,
+    email,
+    paymentReference,
+    paymentProvider = "safepay",
+    purchasedAt,
+  }) {
+    if (!userId) {
+      return {
+        ok: false,
+        error: "missing-user",
+      };
+    }
+
+    const selectedOffer =
+      getPaidOffer(
+        normalizePlanId(planId),
+      );
+
+    if (!selectedOffer) {
+      return {
+        ok: false,
+        error: "unknown-plan",
+      };
+    }
+
+    if (!paymentReference) {
+      return {
+        ok: false,
+        error:
+          "payment-reference-required",
+      };
+    }
+
+    return applyPurchase({
+      id:
+        `evt_${paymentProvider}_${crypto.randomBytes(8).toString("hex")}`,
+
+      type:
+        "checkout.session.completed",
+
+      userId,
+
+      email,
+
+      planId:
+        selectedOffer.id,
+
+      amountUsd:
+        selectedOffer.priceUsd,
+
+      offerVersion:
+        selectedOffer.version,
+
+      sessionId,
+
+      paymentProvider,
+
+      paymentReference,
+
+      purchasedAt:
+        purchasedAt ||
+        new Date(now()).toISOString(),
+    });
+  }
+
   function applySupportOverride({
     userId,
     status,
@@ -1152,6 +1272,104 @@ function createEntitlementService({
     return publicEntitlement(
       record,
     );
+  }
+
+  /*
+   * Rehydrate an entitlement from Supabase into the in-memory cache when it is
+   * missing (after a redeploy/restart, or on a replica that never saw the
+   * purchase). Supabase is the source of truth; the Map is only a cache.
+   */
+  async function hydrateEntitlement(
+    userId,
+  ) {
+    if (!userId) return null;
+    if (entitlements.has(userId)) {
+      return entitlements.get(userId);
+    }
+
+    let row;
+    try {
+      row =
+        await getSupabaseEntitlement(
+          userId,
+        );
+    } catch (error) {
+      console.error(
+        "[entitlements] hydrate failed",
+        error?.message ||
+          String(error),
+      );
+      return null;
+    }
+
+    if (!row || row.status !== "active") {
+      return null;
+    }
+
+    let planRow = null;
+    try {
+      const list =
+        await getUserSubscriptions(
+          userId,
+        );
+      if (list && list.length) {
+        planRow = list[list.length - 1];
+      }
+    } catch {
+      /* plan metadata is best-effort */
+    }
+
+    const selectedOffer =
+      getPaidOffer(
+        normalizePlanId(
+          planRow ? planRow.plan : "",
+        ),
+      );
+
+    const record = {
+      userId,
+      planId:
+        planRow
+          ? planRow.plan
+          : selectedOffer
+            ? selectedOffer.id
+            : "pair",
+      planName:
+        selectedOffer
+          ? selectedOffer.name
+          : null,
+      status: row.status,
+      remaining: row.remaining_runs,
+      total: row.total_runs,
+      maxFilesPerRun:
+        row.max_files_per_run,
+      offerVersion: row.offer_version,
+      priceUsd:
+        planRow
+          ? planRow.price_usd
+          : selectedOffer
+            ? selectedOffer.priceUsd
+            : null,
+      currency:
+        selectedOffer
+          ? selectedOffer.currency
+          : "USD",
+      sessionId: null,
+      purchasedAt: row.purchased_at
+        ? Date.parse(row.purchased_at)
+        : now(),
+      paymentProvider:
+        planRow
+          ? planRow.payment_provider
+          : null,
+      paymentReference:
+        planRow
+          ? planRow.payment_reference
+          : null,
+    };
+
+    entitlements.set(userId, record);
+    return record;
   }
 
   function listPublic() {
@@ -1367,10 +1585,17 @@ function createEntitlementService({
       }
     }
 
-    const record =
+    let record =
       entitlements.get(
         userId,
       );
+
+    if (!record) {
+      record =
+        await hydrateEntitlement(
+          userId,
+        );
+    }
 
     if (
       !record ||
@@ -1394,51 +1619,64 @@ function createEntitlementService({
       };
     }
 
-    record.remaining -= 1;
-
     /*
-     * Keep the database quota in sync with the server quota.
+     * Consume through the authoritative DB compare-and-set so concurrent
+     * consumes (including across replicas) can never double-spend a run.
      */
+    let updated;
     try {
-      await upsertEntitlement({
-        userId,
-
-        status:
-          record.status,
-
-        totalRuns:
-          record.total,
-
-        remainingRuns:
-          record.remaining,
-
-        maxFilesPerRun:
-          record.maxFilesPerRun,
-
-        offerVersion:
-          record.offerVersion,
-
-        purchasedAt:
-          record.purchasedAt
-            ? new Date(
-                record.purchasedAt,
-              ).toISOString()
-            : null,
-      });
+      updated =
+        await consumeRunDb(userId);
     } catch (error) {
-      /*
-       * Roll back the local decrement if the authoritative DB update
-       * failed, so a temporary DB outage does not silently consume a run.
-       */
-      record.remaining += 1;
+      const message =
+        error?.message ||
+        String(error);
+
+      if (
+        message.includes(
+          "quota-exhausted",
+        )
+      ) {
+        record.remaining = 0;
+        return {
+          ok: false,
+          error:
+            "quota-exhausted",
+        };
+      }
+
+      if (
+        message.includes(
+          "entitlement-update-conflict",
+        )
+      ) {
+        return {
+          ok: false,
+          error:
+            "quota-conflict-retry",
+        };
+      }
+
+      if (
+        message.includes(
+          "entitlement-not-found",
+        ) ||
+        message.includes(
+          "entitlement-inactive",
+        )
+      ) {
+        return {
+          ok: false,
+          error:
+            "not-entitled",
+        };
+      }
 
       console.error(
         "[supabase] consume sync failed",
         {
           userId,
-          message:
-            error?.message ||
-            String(error),
+          message,
         },
       );
 
@@ -1448,6 +1686,9 @@ function createEntitlementService({
           "supabase-sync-failed",
       };
     }
+
+    record.remaining =
+      updated.remaining_runs;
 
     audit({
       action:
@@ -1550,7 +1791,11 @@ function createEntitlementService({
 
     completeMockPurchase,
 
+    completeProviderPurchase,
+
     getEntitlement,
+
+    hydrateEntitlement,
 
     listPublic,
 
